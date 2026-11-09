@@ -14,7 +14,7 @@
   <joint name="left_wheel_joint" type="continuous">
     <parent link="base_link"/>
     <child link="left_wheel"/>
-    <origin xyz="0 0.145 0" rpy="-1.57079632679 0 0"/> 
+    <origin xyz="0 0.138 0" rpy="-1.57079632679 0 0"/> 
     <axis xyz="0 0 1"/>
   </joint>
 
@@ -22,13 +22,35 @@
   <joint name="right_wheel_joint" type="continuous">
     <parent link="base_link"/>
     <child link="right_wheel"/>
-    <origin xyz="0 -0.145 0" rpy="-1.57079632679 0 0"/>
+    <origin xyz="0 -0.138 0" rpy="-1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
   </joint>
 
   <ros2_control name="Zlac8015dSystem" type="system">
     <hardware>
       <plugin>zlac8015d_hardware/Zlac8015dSystemHardware</plugin>
+
+      <!-- CANopen -->
+      <param name="can_interface">can0</param>
+      <param name="node_id">1</param>
+
+      <!--
+        Keep "velocity" until b0 identification is finished.
+        Then set this to "ladrc_torque" and replace ladrc_b0_left/right
+        with the values reported by analyze_b0.py.
+      -->
+      <param name="control_mode">ladrc_torque</param>
+
+      <!-- LADRC: omega_dot = f + b0 * I -->
+      <param name="ladrc_b0_left">18.0</param>
+      <param name="ladrc_b0_right">18.0</param>
+      <param name="ladrc_wc">5.0</param>
+      <param name="ladrc_wo">20.0</param>
+
+      <!-- Current-command safety constraints -->
+      <param name="current_limit_a">8.0</param>
+      <param name="current_rate_limit_a_per_s">20.0</param>
+      <param name="feedback_timeout_ms">30.0</param>
     </hardware>
     <joint name="left_wheel_joint">
       <command_interface name="velocity"/>

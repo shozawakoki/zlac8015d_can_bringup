@@ -1,6 +1,6 @@
 controller_manager:
   ros__parameters:
-    update_rate: 50
+    update_rate: 200
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
@@ -11,16 +11,17 @@ controller_manager:
 diff_drive_controller:
   ros__parameters:
     # URDFで定義した名前と完全に一致している必要があります
-    use_stamped_vel: false   # ← 追加
+    use_stamped_vel: false
     left_wheel_names: ["left_wheel_joint"]
     right_wheel_names: ["right_wheel_joint"]
 
-    wheel_separation: 0.279
+    wheel_separation: 0.243
     wheel_radius: 0.064
     
     # 以下のパラメータを明示的に指定します
     publish_rate: 50.0
-    open_loop: true
+    open_loop: false
+    position_feedback: true
     enable_odom_tf: true
     odom_frame_id: "odom"
     base_frame_id: "base_footprint"
