@@ -1,35 +1,30 @@
 # zlac8015d_can_bringup
-# zlac_can_bringup
 
-ZLAC8015D モータドライバを使用した対向二輪型移動ロボット用の **ROS 2 起動・設定パッケージ**です。`zlac8015d_hardware` の `ros2_control` ハードウェアプラグインを読み込み、左右車輪の速度指令、関節状態、オドメトリを扱えるようにします。
+ZLAC8015D モータドライバを搭載した対向二輪型移動ロボット向けの **ROS 2 bringup パッケージ**です。ROS 2 パッケージ名は `zlac_can_bringup` です。
 
-**起動コマンド**
+`robot_state_publisher`、`ros2_control_node`、`joint_state_broadcaster`、`diff_drive_controller` を起動し、別リポジトリの [zlac8015d_hardware](https://github.com/shozawakoki/zlac8015d_hardware) をハードウェアプラグインとして読み込みます。
 
-```bash
-ros2 launch zlac_can_bringup zlac_can_bringup.launch.py
-```
+> 本 README は `main` ブランチの実ファイルに基づいています。起動対象は `launch/zlac_can_bringup.launch.py`、設定は `config/controllers.yaml` と `urdf/orange_go_2025.urdf` です。CAN 速度やモータ配線などの機体固有条件は、実機で確認してください。
 
 ## 動作環境
 
 - Ubuntu 22.04 / ROS 2 Humble
-- `zlac8015d_hardware` パッケージ（同じROS 2ワークスペースに配置）
-- `ros2_control` / `ros2_controllers`
-- `controller_manager` / `joint_state_broadcaster` / `diff_drive_controller`
-- `robot_state_publisher` / `launch_ros`
-- SocketCAN インターフェース（初期設定 `can0`）と ZLAC8015D モータドライバ
+- `ros2_control`、`ros2_controllers`、`robot_state_publisher`
+- Linux SocketCAN（初期設定 `can0`）
+- ZLAC8015D モータドライバ
+- [`zlac8015d_hardware`](https://github.com/shozawakoki/zlac8015d_hardware)（同一 ROS 2 ワークスペース内）
 
-ROS 2 がインストール済みで、コントローラ等が未導入の場合の例：
+必要な ROS 2 パッケージなどを導入する例：
 
 ```bash
 sudo apt update
-sudo apt install ros-humble-ros2-control ros-humble-ros2-controllers \
-  ros-humble-robot-state-publisher can-utils
+sudo apt install ros-humble-ros2-control ros-humble-ros2-controllers ros-humble-robot-state-publisher python3-colcon-common-extensions can-utils
 ```
 
 ## ファイル構成
 
 ```text
-zlac_can_bringup/
+zlac8015d_can_bringup/
 ├── CMakeLists.txt
 ├── package.xml
 ├── launch/
@@ -37,35 +32,43 @@ zlac_can_bringup/
 ├── config/
 │   └── controllers.yaml
 └── urdf/
-    ├── orange_go_2025.urdf
-    └── orange_go_2025_before_ladrc_cmdvel.urdf
+    └── orange_go_2025.urdf
 ```
 
-- `launch/zlac_can_bringup.launch.py`：ドライバとROS 2コントローラ群を起動。
-- `config/controllers.yaml`：制御周期、差動二輪コントローラ、オドメトリの設定。
-- `urdf/orange_go_2025.urdf`：車輪ジョイント、`ros2_control` インターフェース、CAN通信、LADRCパラメータなどの現行設定。
-- `urdf/orange_go_2025_before_ladrc_cmdvel.urdf`：過去の設定を残した比較・バックアップファイル。通常のlaunchでは**読み込まれません**。
+| ファイル | 役割 |
+| --- | --- |
+| `launch/zlac_can_bringup.launch.py` | ロボット状態配信、ハードウェア、2つのコントローラの起動 |
+| `config/controllers.yaml` | 差動二輪の車輪寸法、更新周期、オドメトリ設定 |
+| `urdf/orange_go_2025.urdf` | 車輪ジョイント、ROS 2 制御インターフェース、CAN・LADRC 設定 |
+| `CMakeLists.txt` / `package.xml` | `ament_cmake` によるビルドとインストール |
 
-## インストールとビルド
+この `main` ブランチには、旧 URDF、CAN 再起動用 watchdog、モデル同定用スクリプトは含まれていません。
 
-`~/ros2_ws/src/` 以下に本パッケージと `zlac8015d_hardware` パッケージを配置してください。ZIPの展開フォルダ名に `-devel-ADRC` の接尾辞があっても、`package.xml` で定義されたパッケージ名は `zlac_can_bringup` です。
+## インストール・ビルド
 
 ```bash
 source /opt/ros/humble/setup.bash
+mkdir -p ~/ros2_ws/src
+cd ~/ros2_ws/src
+git clone https://github.com/shozawakoki/zlac8015d_hardware.git
+git clone https://github.com/shozawakoki/zlac8015d_can_bringup.git
 cd ~/ros2_ws
 colcon build --packages-select zlac8015d_hardware zlac_can_bringup --symlink-install
 source install/setup.bash
 ```
 
-`can0` の存在・状態を確認します。
+すでにクローン済みの場合は、重複して `git clone` せず、各リポジトリの `main` を更新してからビルドしてください。`package.xml` では依存関係がすべて宣言されていないため、上記の ROS 2 実行時依存パッケージは別途インストールする必要があります。
+
+## CAN インターフェースの確認
 
 ```bash
 ip -details link show can0
+candump can0
 ```
 
-CAN インターフェースが未設定の場合は、機器に適したビットレートで有効化してください。このパッケージはCANインターフェースの作成やバスの物理接続復旧を行いません。
+`candump` は受信確認後 `Ctrl+C` で終了します。CAN のビットレート、インターフェース有効化、物理配線、ドライバの電源はこのパッケージでは設定しません。使用機器に適した条件で事前に構成してください。
 
-## 起動方法
+## 起動・動作確認
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -73,137 +76,90 @@ source ~/ros2_ws/install/setup.bash
 ros2 launch zlac_can_bringup zlac_can_bringup.launch.py
 ```
 
-launchは次のノード・コントローラを起動します。
-
-| 要素 | 役割 |
-| --- | --- |
-| `robot_state_publisher` | URDFからロボットのリンク・ジョイント情報を公開 |
-| `controller_manager` (`ros2_control_node`) | `zlac8015d_hardware` プラグインと制御ループを実行 |
-| `joint_state_broadcaster` | 車輪ジョイントの状態を `/joint_states` に公開 |
-| `diff_drive_controller` | `/cmd_vel` から左右の車輪角速度指令を生成し、オドメトリを公開 |
-
-停止する場合は起動ターミナルで `Ctrl+C` を押します。
-
-## 主なROS 2インターフェース
-
-| トピック | データ型・内容 |
-| --- | --- |
-| `/cmd_vel` | `geometry_msgs/msg/Twist`：目標並進速度 `linear.x` [m/s] と角速度 `angular.z` [rad/s] |
-| `/joint_states` | `sensor_msgs/msg/JointState`：左右の車輪の位置・速度・effort |
-| `/odom` | `nav_msgs/msg/Odometry`：車輪オドメトリ |
-| `/tf` | `odom` → `base_footprint` などのTF（設定に基づく） |
-
-`/cmd_vel` への接続はlaunch内の `diff_drive_controller/cmd_vel_unstamped` からのリマッピングで行っています。`use_stamped_vel: false` の設定により、タイムスタンプなしの `Twist` を使用します。
-
-動作確認例（別ターミナル）：
+別ターミナルから確認：
 
 ```bash
 source /opt/ros/humble/setup.bash
 source ~/ros2_ws/install/setup.bash
-
 ros2 control list_controllers
 ros2 topic echo /joint_states
 ros2 topic echo /odom
 ```
 
-モータ指令の検証は、車輪を浮かせるなど安全を確保した状態で実施してください。
+起動される要素：
 
-## 制御パラメータ
+| 要素 | 機能 |
+| --- | --- |
+| `robot_state_publisher` | URDF のリンク・ジョイント情報を配信 |
+| `controller_manager`（`ros2_control_node`） | ZLAC8015D ハードウェアプラグインと制御ループを実行 |
+| `joint_state_broadcaster` | 左右駆動輪の関節状態を配信 |
+| `diff_drive_controller` | 車体の速度指令を左右車輪の角速度指令に変換し、オドメトリを計算 |
+
+`launch` では `/diff_drive_controller/cmd_vel_unstamped` → `/cmd_vel`、`/diff_drive_controller/odom` → `/odom` のリマッピングを設定しています。
+
+| 主なトピック | 内容 |
+| --- | --- |
+| `/cmd_vel` | `geometry_msgs/msg/Twist`：`linear.x` [m/s]、`angular.z` [rad/s] |
+| `/joint_states` | `sensor_msgs/msg/JointState`：車輪の位置・角速度・effort |
+| `/odom` | `nav_msgs/msg/Odometry`：車輪オドメトリ |
+| `/tf` | 有効化されたオドメトリ TF など |
+
+実機を動かす試験では、事前に非常停止手段を準備し、最初は車輪を浮かせて回転方向を確認してください。終了時は起動ターミナルで `Ctrl+C` を押します。
+
+## 現在のパラメータ
 
 ### `config/controllers.yaml`
 
-添付ファイルの設定値は以下です。
-
-| 項目 | 値 | 内容 |
+| 設定 | `main` の値 | 説明 |
 | --- | --- | --- |
-| `controller_manager.update_rate` | `200` | 制御更新周期 [Hz] |
-| `wheel_separation` | `0.354` | 車輪間距離 [m] |
+| `controller_manager.update_rate` | `200` | 制御更新レート [Hz] |
+| `left_wheel_names` | `left_wheel_joint` | 左車輪ジョイント |
+| `right_wheel_names` | `right_wheel_joint` | 右車輪ジョイント |
+| `wheel_separation` | `0.243` | 差動二輪コントローラで使用する車輪間距離 [m] |
 | `wheel_radius` | `0.064` | 車輪半径 [m] |
-| `publish_rate` | `50.0` | オドメトリなどの公開周期 [Hz] |
-| `open_loop` | `false` | 実測状態を使用 |
-| `position_feedback` | `true` | エンコーダ位置フィードバックを使用 |
-| `enable_odom_tf` | `true` | オドメトリTFを配信 |
-| `odom_frame_id` | `odom` | オドメトリ座標系 |
-| `base_frame_id` | `base_footprint` | ロボット基準座標系 |
-| `use_stamped_vel` | `false` | `/cmd_vel` は `Twist` 形式 |
+| `publish_rate` | `50.0` | オドメトリ公開レート [Hz] |
+| `open_loop` | `false` | フィードバックを用いてオドメトリを算出 |
+| `position_feedback` | `true` | エンコーダ位置を使用 |
+| `enable_odom_tf` | `true` | オドメトリ TF を配信 |
+| `odom_frame_id` | `odom` | オドメトリフレーム |
+| `base_frame_id` | `base_footprint` | 車体基準フレーム |
+| `use_stamped_vel` | `false` | 速度指令にタイムスタンプなしの `Twist` を使用 |
 
-車輪名は `left_wheel_joint` / `right_wheel_joint` です。**URDFとYAMLの車輪名・寸法が一致している必要があります。**
+**要確認：** 現在の URDF では車輪ジョイントの Y 座標が `+0.138 m` / `-0.138 m` で、その差は **0.276 m** です。一方、`controllers.yaml` の `wheel_separation` は **0.243 m** です。両者は一致していません。どの値を使うべきかは実機の有効車輪間距離やキャリブレーション結果に基づいて確認してください。ここではコードや設定値を変更していません。
 
 ### `urdf/orange_go_2025.urdf`
 
-`ros2_control` の `<hardware>` に以下を指定しています。
+| 設定 | `main` の値 | 説明 |
+| --- | --- | --- |
+| `can_interface` | `can0` | SocketCAN インターフェース |
+| `node_id` | `1` | CANopen ノード ID |
+| `control_mode` | `ladrc_torque` | 現在の制御モード |
+| `ladrc_b0_left` / `ladrc_b0_right` | `18.0` / `18.0` | 左右の公称電流入力ゲイン [(rad/s²)/A] |
+| `ladrc_wc` | `5.0` | 制御帯域幅 [rad/s] |
+| `ladrc_wo` | `20.0` | ESO 帯域幅 [rad/s] |
+| `current_limit_a` | `8.0` | LADRC TRACK 時の電流上限 [A] |
+| `current_rate_limit_a_per_s` | `20.0` | LADRC TRACK 時の電流変化率上限 [A/s] |
+| `feedback_timeout_ms` | `30.0` | LADRC 用速度フィードバック監視閾値 [ms] |
 
-```xml
-<plugin>zlac8015d_hardware/Zlac8015dSystemHardware</plugin>
-<param name="can_interface">can0</param>
-<param name="node_id">1</param>
-<param name="control_mode">ladrc_torque</param>
-<param name="ladrc_b0_left">20.0</param>
-<param name="ladrc_b0_right">20.0</param>
-<param name="ladrc_wc">5.0</param>
-<param name="ladrc_wo">20.0</param>
-<param name="current_limit_a">8.0</param>
-<param name="current_rate_limit_a_per_s">20.0</param>
-<param name="feedback_timeout_ms">30.0</param>
-```
+使用するプラグインは `zlac8015d_hardware/Zlac8015dSystemHardware` です。両車輪とも ROS 2 側のコマンドインターフェースは `velocity` [rad/s]、状態インターフェースは `position`、`velocity`、`effort` です。
 
-制御方式は `control_mode` によって切り替えます。
+`control_mode` で以下を切り替えられます。
 
-- **`velocity`**：ドライバ内蔵の速度制御を使用。
-- **`ladrc_torque`**：左右車輪の速度追従用LADRCから電流を指令。初期設定はこちらです。
+- `velocity`：ZLAC8015D 内蔵の速度制御に角速度指令を送信。
+- `ladrc_torque`：ハードウェア側で車輪角速度指令を LADRC により電流指令へ変換。現在の設定。
 
-どちらの場合も、`diff_drive_controller` からハードウェアへは**車輪角速度指令**が渡されます。`ladrc_torque` の電流指令への変換は `zlac8015d_hardware` 内部で行われます。パラメータ変更後は、launchを再起動してください。
+LADRC の詳細、CANopen PDO、起動時の静止摩擦対策、減速ランプ、ログは [hardware 側 README](https://github.com/shozawakoki/zlac8015d_hardware#readme) を参照してください。設定変更後は再ビルドし、launch を再起動してください。
 
-## CAN通信とエンコーダ
+## 注意事項・トラブルシューティング
 
-CANopen ノードID `1` の場合、ハードウェア側は主に次のCANフレームを扱います。
-
-| CAN ID | 内容 |
-| --- | --- |
-| `0x181` | 左右の実測角速度 |
-| `0x281` | 左右の実測モータ電流 |
-| `0x381` | 左右のエンコーダ位置 |
-| `0x201` | LADRCモードの電流指令 |
-| `0x301` | 速度制御モードの角速度指令 |
-
-受信したエンコーダは起動時の値を原点とする相対値として扱われます。**再起動すると車輪位置およびそこから計算されるオドメトリの連続性が失われる可能性があります。**
-
-## CAN通信断からの自動再起動（任意）
-
-この**最初に添付されたbringup ZIPには自動再起動スクリプトは含まれません**。別途作成・動作確認済みの `can_launch_watchdog.py` をUbuntu PCに配置することで、launchを監視して再起動できます。
-
-```bash
-source /opt/ros/humble/setup.bash
-source ~/ros2_ws/install/setup.bash
-python3 ~/can_launch_watchdog.py
-```
-
-制御モードが `velocity` などで `/tmp/ladrc_track_200hz.csv` を生成しない場合は、CSV更新監視を無効にしてください。
-
-```bash
-python3 ~/can_launch_watchdog.py --log-file ""
-```
-
-watchdog使用時は、そのプログラムがlaunchを起動するため、**別途 `ros2 launch ...` を同時実行しないでください**。これはオプションであり、本パッケージの基本動作に必須ではありません。
-
-## トラブルシューティング
-
-| 症状 | 確認する項目 |
-| --- | --- |
-| `can0` が見つからない | `ip -details link show can0`、CANアダプタ、インターフェース名 |
-| `ros2_control` が初期化できない | `zlac8015d_hardware` のビルドと読み込み、URDFのplugin名 |
-| `diff_drive_controller` が起動しない | `ros2 control list_controllers`、ジョイント名、YAML設定 |
-| `/joint_states` が更新されない | CAN配線・電源、PDO受信、`candump can0` |
-| ロボットの走行方向がおかしい | 左右の接続、モータ極性、車輪名、符号設定 |
-| `/odom` が不連続になる | ハードウェアの再起動・エンコーダ原点の再設定 |
-
-## 安全上の注意
-
-- 本パッケージはモータを有効化するため、起動前に非常停止手段を確保してください。
-- 通信断・電源断の際の安全停止は、ソフトウェアだけでなくドライバ設定・ハードウェアで確保してください。
-- モータやエンコーダの配線、車輪寸法、CANノードIDが異なる機体には、設定を変更してから使用してください。
-- 同じCANopenノードに対し、bringupと独立した同定プログラムを同時に動かさないでください。
+- `can0` がない：`ip -details link show can0` で CAN デバイスの状態を確認。
+- コントローラが起動しない：`ros2 control list_controllers`、車輪ジョイント名、YAML と URDF、プラグインのビルド状況を確認。
+- `/joint_states` が更新されない：ドライバ電源、CAN 接続、PDO 受信を確認。
+- `/odom` の位置がリセットされる：ハードウェア起動時にエンコーダの相対原点が再設定されるため、再起動前後の位置連続性に注意。
+- 実機の回転方向が合わない：左モータはハードウェア実装で符号反転されるため、配線と座標系を含めて確認。
+- 通信断からの自動再起動用 `can_launch_watchdog.py` は **このリポジトリには含まれません**。別途使用する場合、launch の二重起動を避けてください。
+- 通常停止や通信断に対するソフトウェア処理のみで安全停止は保証できません。非常停止回路、モータドライバの保護設定を別途用意してください。
 
 ## ライセンス
 
-添付された `package.xml` のライセンス欄は `TODO` のままです。GitHubで公開する際は権利関係を確認し、適切な `LICENSE` ファイルとライセンス表記を追加してください。
+現時点の `package.xml` のライセンス欄は `TODO` です。公開・再利用に関する条件は、正式なライセンスを設定するまで未確定です。
