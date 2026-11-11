@@ -15,7 +15,7 @@ diff_drive_controller:
     left_wheel_names: ["left_wheel_joint"]
     right_wheel_names: ["right_wheel_joint"]
 
-    wheel_separation: 0.243
+    wheel_separation: 0.354
     wheel_radius: 0.064
     
     # 以下のパラメータを明示的に指定します
