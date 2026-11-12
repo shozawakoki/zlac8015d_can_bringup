@@ -24,6 +24,7 @@ ARG_DEFAULTS = {
     "pid_kp": "0.7",
     "pid_ki": "0.5",
     "pid_kd": "0.03",
+    "pid_bumpless_handoff": "0",
     "pid_derivative_filter_tau_s": "0.05",
     "ladrc_b0_left": "18.0",
     "ladrc_b0_right": "18.0",
@@ -55,7 +56,7 @@ ARG_DEFAULTS = {
 
 CONTROL_MODES = ("velocity", "ladrc_torque", "pid_torque")
 GAIN_KEYS = (
-    "pid_kp", "pid_ki", "pid_kd", "pid_derivative_filter_tau_s",
+    "pid_kp", "pid_ki", "pid_kd", "pid_bumpless_handoff", "pid_derivative_filter_tau_s",
     "ladrc_b0_left", "ladrc_b0_right", "ladrc_wc", "ladrc_wo",
     "current_limit_a", "current_rate_limit_a_per_s", "feedback_timeout_ms",
     "breakaway_start_a", "breakaway_step_a", "breakaway_max_a",
@@ -98,8 +99,10 @@ def _expand_launch(context, *args, **kwargs):
         numeric["pid_kp"] + numeric["pid_ki"] + numeric["pid_kd"] <= 0
     ):
         raise ValueError("At least one PID gain must be positive.")
+    if numeric["pid_bumpless_handoff"] not in (0.0, 1.0):
+        raise ValueError("pid_bumpless_handoff must be 0 or 1")
     for key in GAIN_KEYS:
-        if key not in ("pid_kp", "pid_ki", "pid_kd") and numeric[key] <= 0:
+        if key not in ("pid_kp", "pid_ki", "pid_kd", "pid_bumpless_handoff") and numeric[key] <= 0:
             raise ValueError("{} must be positive".format(key))
     # The hardware sends signed mA as int16. Never request >30A.
     if numeric["current_limit_a"] > 30.0:
