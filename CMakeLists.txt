@@ -28,4 +28,10 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
+# Executed by zlac_experiment.launch.py through ros2 launch / ros2 run.
+install(
+  PROGRAMS scripts/record_experiment.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()
