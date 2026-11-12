@@ -32,6 +32,16 @@ ARG_DEFAULTS = {
     "current_limit_a": "8.0",
     "current_rate_limit_a_per_s": "20.0",
     "feedback_timeout_ms": "30.0",
+    # Starting parameters are passed to the hardware in-memory URDF.
+    "breakaway_start_a": "0.65",
+    "breakaway_step_a": "0.10",
+    "breakaway_max_a": "2.0",
+    "breakaway_step_samples": "20",
+    "breakaway_start_speed_rad_s": "0.30",
+    "breakaway_start_samples": "6",
+    "stall_speed_rad_s": "0.10",
+    "stall_samples": "80",
+    "stall_min_drive_current_a": "0.20",
     "test_label": "speed_tracking",
     "planned_linear_m_s": "0.2",
     "planned_angular_rad_s": "0.0",
@@ -48,6 +58,10 @@ GAIN_KEYS = (
     "pid_kp", "pid_ki", "pid_kd", "pid_derivative_filter_tau_s",
     "ladrc_b0_left", "ladrc_b0_right", "ladrc_wc", "ladrc_wo",
     "current_limit_a", "current_rate_limit_a_per_s", "feedback_timeout_ms",
+    "breakaway_start_a", "breakaway_step_a", "breakaway_max_a",
+    "breakaway_step_samples", "breakaway_start_speed_rad_s",
+    "breakaway_start_samples", "stall_speed_rad_s", "stall_samples",
+    "stall_min_drive_current_a",
 )
 
 
@@ -90,6 +104,16 @@ def _expand_launch(context, *args, **kwargs):
     # The hardware sends signed mA as int16. Never request >30A.
     if numeric["current_limit_a"] > 30.0:
         raise ValueError("current_limit_a must not exceed 30.0 A")
+    for k in ("breakaway_step_samples", "breakaway_start_samples", "stall_samples"):
+        if not float(numeric[k]).is_integer():
+            raise ValueError(k + " must be an integer")
+        numeric[k] = int(numeric[k])
+    if numeric["breakaway_start_a"] > numeric["breakaway_max_a"] or (
+        numeric["breakaway_max_a"] > numeric["current_limit_a"]
+    ):
+        raise ValueError("Require breakaway_start_a <= breakaway_max_a <= current_limit_a")
+    if not 0.0 < numeric["stall_min_drive_current_a"] <= numeric["current_limit_a"]:
+        raise ValueError("Invalid stall_min_drive_current_a")
 
     share = get_package_share_directory("zlac_can_bringup")
     urdf_path = os.path.join(share, "urdf", "orange_go_2025.urdf")
