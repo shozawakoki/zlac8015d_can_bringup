@@ -31,6 +31,16 @@ defaults:
   current_limit_a: 4.0
   current_rate_limit_a_per_s: 20.0
   feedback_timeout_ms: 30.0
+  # Startup/recovery values shared by PID and LADRC for comparison.
+  breakaway_start_a: 0.65
+  breakaway_step_a: 0.10
+  breakaway_max_a: 2.0
+  breakaway_step_samples: 20
+  breakaway_start_speed_rad_s: 0.30
+  breakaway_start_samples: 6
+  stall_speed_rad_s: 0.10
+  stall_samples: 80
+  stall_min_drive_current_a: 0.20
 
 profiles:
   # Duration includes command holding time, not a displacement guarantee.
