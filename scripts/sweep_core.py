@@ -224,6 +224,28 @@ def validate_gains(g, safety):
         raise ValueError("At least one PID gain must be nonzero")
     if g["current_limit_a"] > safety["max_current_a"]:
         raise ValueError("current_limit_a exceeds sweep safety.max_current_a")
+    if g["breakaway_start_a"] > g["breakaway_max_a"] or (
+        g["breakaway_max_a"] > g["current_limit_a"]
+    ):
+        raise ValueError(
+            "Require breakaway_start_a <= breakaway_max_a <= current_limit_a"
+        )
+    for k in ("breakaway_step_samples", "breakaway_start_samples", "stall_samples"):
+        if int(g[k]) != g[k]:
+            raise ValueError(k + " must be an integer")
+    if not 1 <= g["breakaway_step_samples"] <= 2000 or (
+        not 1 <= g["breakaway_start_samples"] <= 500 or
+        not 1 <= g["stall_samples"] <= 5000
+    ):
+        raise ValueError("Invalid startup/recovery sample count")
+    if not 0 < g["stall_min_drive_current_a"] <= g["current_limit_a"]:
+        raise ValueError("Invalid stall_min_drive_current_a")
+    if not 0 < g["breakaway_start_speed_rad_s"] <= 10 or (
+        not 0 < g["stall_speed_rad_s"] < g["breakaway_start_speed_rad_s"]
+    ):
+        raise ValueError("Invalid startup/stall wheel-speed thresholds")
+    if not 0 < g["breakaway_step_a"] <= g["breakaway_max_a"]:
+        raise ValueError("Invalid breakaway_step_a")
     if not 0 < g["feedback_timeout_ms"] <= 200:
         raise ValueError("feedback_timeout_ms out of range")
     if not 0 < g["current_rate_limit_a_per_s"] <= 100:
