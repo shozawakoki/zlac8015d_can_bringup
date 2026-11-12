@@ -65,3 +65,18 @@ g++ -std=c++17 -Wall -Wextra -Werror -Iinclude \
 ```
 
 This does **not** exercise actual `ros2_control` scheduling or physical stop/lockout hardware. The full control plugin must still compile and integration/safety tests are required before motion.
+
+## Offline test of production experiment feedback monitor
+
+The supervised runner now imports `check_feedback_limits()` from `scripts/safety_rules.py`. The function rejects stale/non-finite feedback, overspeed, overcurrent, and measured-travel/rotation excess. The ROS2 runner still owns zero-command publishing and launch teardown.
+
+```bash
+cd ~/ros2_ws/src/zlac8015d_can_bringup
+python3 -m unittest discover -s tests -p 'test_safety_rules.py' -v
+python3 -m py_compile scripts/run_gain_sweep.py scripts/safety_rules.py scripts/sweep_core.py
+cd ~/ros2_ws
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install --packages-select zlac8015d_hardware zlac_can_bringup
+```
+
+The regression test includes the previous observed 1.86/1.45 rad/s safety-abort velocities. Passing these tests does **not** verify real-time stopping latency, ROS2 controller interactions, CAN link interruption, physical emergency stop, or the complete feedback-to-zero-command chain. No `--execute` is part of this procedure.
