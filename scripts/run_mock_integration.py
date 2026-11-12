@@ -98,7 +98,25 @@ def run_check():
                 break
         if len(states) < 5:
             raise RuntimeError("No mock joint_states; check mock plugin availability")
-        time.sleep(0.2)
+        # Do not drive the mock until BOTH controllers are active.
+        ready = False
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            cmd_result = subprocess.run(
+                ["ros2", "control", "list_controllers",
+                 "--controller-manager", "/controller_manager"],
+                capture_output=True, text=True, timeout=5)
+            lines = cmd_result.stdout.splitlines()
+            ready = cmd_result.returncode == 0 and all(
+                any(line.strip().startswith(name + " ") and
+                    "active" in line.split()
+                    for line in lines)
+                for name in ("diff_drive_controller", "joint_state_broadcaster"))
+            if ready:
+                break
+            send(0.0, 0.20)
+        if not ready:
+            raise RuntimeError("Mock diff_drive_controller not active")
         states.clear()
 
         # Command only in isolated mock domain. Wheels should mirror roughly
