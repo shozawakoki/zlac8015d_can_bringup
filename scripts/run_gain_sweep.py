@@ -16,6 +16,7 @@ import csv
 import datetime as dt
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import signal
@@ -324,12 +325,24 @@ def wait_ready(proc, session, timeout_s):
             ["ros2", "control", "list_controllers",
              "--controller-manager", "/controller_manager"],
             timeout_s=4.0)
-        active = [line for line in output.splitlines()
-                  if line.split() and line.split()[-1] == "active"]
+        # ros2 control CLI may colorize status using ANSI escapes (for
+        # example, "\\x1b[32mactive\\x1b[0m"). A raw split()[-1] comparison
+        # can therefore report active=[] even though both are active.
+        # Detect whole-word 'active' in each controller row after removing
+        # terminal escape sequences. Do not accept 'inactive'.
+        ansi_escape = re.compile(r"\\x1b\\[[0-?]*[ -/]*[@-~]")
+        clean_output = ansi_escape.sub("", output).replace("\\r", "\\n")
+        active = []
+        for line in clean_output.splitlines():
+            words = line.split()
+            if len(words) >= 3 and words[0] in (
+                "diff_drive_controller", "joint_state_broadcaster"
+            ) and "active" in words[2:]:
+                active.append(words[0])
         controllers_ready = (
             code == 0 and
-            any("diff_drive_controller" in line for line in active) and
-            any("joint_state_broadcaster" in line for line in active)
+            "diff_drive_controller" in active and
+            "joint_state_broadcaster" in active
         )
 
         # The CLI is blocking. Process ROS feedback *after* it returns, then
@@ -365,7 +378,7 @@ def wait_ready(proc, session, timeout_s):
             "controller CLI exit=%s, active=%s, joint_samples=%d, "
             "last_feedback_age_s=%s, CLI=%s" % (
                 code,
-                [line.strip() for line in active],
+                active,
                 session.samples,
                 ("%.3f" % (time.monotonic() - session.last_feedback)
                  if session.last_feedback is not None else "none"),
