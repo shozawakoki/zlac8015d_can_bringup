@@ -35,3 +35,20 @@ Both handoff options cannot be active together. Duration is limited to 0.02 to 0
 - The command and actual current/velocity logs show the intended TRANSITION interval; the PI integral remains independent of BREAKAWAY assist.
 
 The 80% speed cutoff and 0.10 s duration are engineering starting points, **not validated control parameters**.
+
+## Offline verification commands (no CAN / no robot motion)
+
+```bash
+cd ~/ros2_ws/src/zlac8015d_hardware
+g++ -std=c++17 -Wall -Wextra -Werror -Iinclude tests/test_pi_transition.cpp -o /tmp/test_pi_transition
+/tmp/test_pi_transition
+
+cd ~/ros2_ws
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install --packages-select zlac8015d_hardware zlac_can_bringup
+source install/setup.bash
+```
+
+The standalone C++ test uses the same `compute_pi_transition()` function as the hardware controller. It verifies bounded fade, 80% speed cutoff, timeout, braking, normal-stop suppression, and sign reversal. It is **not** a full integrated test of the ROS2 state machine, CAN feedback, or safety monitor. The package build and launch plan dry-run must additionally pass; separate offline integration tests of stop/lockout/synchronization are still required before any new physical-motion test.
+
+To prepare the existing `pi_handoff_1.yaml` plan for **dry-run only**, set gains `pid_bumpless_handoff: 0`, `pid_three_stage_transition: 1`, `pid_transition_duration_s: 0.10`, and confirm `surface: wheels_elevated`. The dry-run must not be invoked with `--execute`.
