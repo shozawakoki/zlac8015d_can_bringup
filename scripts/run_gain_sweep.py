@@ -27,6 +27,7 @@ import traceback
 import uuid
 
 from sweep_core import compute_metrics, load_plan
+from safety_rules import check_feedback_limits
 from stage_metrics import compute_stage_metrics, write_stage_metrics
 
 CONSENT_TEXT = "I HAVE AN EMERGENCY STOP"
@@ -256,26 +257,18 @@ class MotionSession:
     def check_feedback(self):
         if self.last_feedback is None:
             raise RuntimeError("No valid /joint_states wheel-velocity feedback")
-        age = time.monotonic() - self.last_feedback
-        if age > 0.35:
-            raise RuntimeError("Wheel-speed feedback stale: %.3f s" % age)
         vl, vr, il, ir = self.latest
-        maximum_speed = self.plan["safety"]["max_wheel_rad_s"]
-        # Fail if wheel speeds exceed both a preset limit and a tolerance to
-        # accommodate initial brake transients.
-        if max(abs(vl), abs(vr)) > min(10.0, maximum_speed * 1.2):
-            raise RuntimeError(
-                "Wheel overspeed: left=%.2f right=%.2f rad/s" % (vl, vr))
-        # Secondary monitoring bound: measured wheel travel/turn, distinct
-        # from the prevalidated integrated *command* profile.
-        if self.observed_travel_m > 0.65:
-            raise RuntimeError("Observed wheel travel exceeded 0.65 m")
-        if self.observed_rotation_rad > 1.00:
-            raise RuntimeError("Observed wheel rotation exceeded 1.00 rad")
-        maximum_current = self.plan["safety"]["max_current_a"]
-        if max(abs(il), abs(ir)) > min(8.0, maximum_current * 1.2):
-            raise RuntimeError(
-                "Current exceeded monitoring threshold: L=%.2f R=%.2f A" % (il, ir))
+        check_feedback_limits(
+            feedback_age_s=time.monotonic() - self.last_feedback,
+            left_velocity_rad_s=vl,
+            right_velocity_rad_s=vr,
+            left_current_a=il,
+            right_current_a=ir,
+            observed_travel_m=self.observed_travel_m,
+            observed_rotation_rad=self.observed_rotation_rad,
+            max_wheel_rad_s=self.plan["safety"]["max_wheel_rad_s"],
+            max_current_a=self.plan["safety"]["max_current_a"],
+        )
 
     def assert_single_commander(self):
         # Exclude this publisher; no other /cmd_vel publisher is acceptable.
