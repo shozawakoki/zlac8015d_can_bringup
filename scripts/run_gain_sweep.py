@@ -190,7 +190,8 @@ class MotionSession:
         self.rclpy.init(args=None)
         self.node = rclpy.create_node("zlac_gain_sweep_commander")
         self.pub = self.node.create_publisher(Twist, "/cmd_vel", 10)
-        self.node.create_subscription(JointState, "/joint_states", self._on_joints, 20)
+        # Keep latest feedback instead of queueing a 200-Hz backlog.
+        self.node.create_subscription(JointState, "/joint_states", self._on_joints, 1)
         self.last_feedback = None
         self.latest = None
         self.samples = 0
@@ -207,6 +208,13 @@ class MotionSession:
                 return
             current_l = float(msg.effort[li]) if len(msg.effort) > li else 0.0
             current_r = float(msg.effort[ri]) if len(msg.effort) > ri else 0.0
+            if not all(__import__("math").isfinite(x) for x in (current_l, current_r)):
+                return
+            # Reject stale messages when the ROS header clock is valid.
+            stamp_s = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+            clock_s = self.node.get_clock().now().nanoseconds * 1e-9
+            if stamp_s > 0 and clock_s - stamp_s > 0.5:
+                return
             self.latest = (speed_l, speed_r, current_l, current_r)
             self.last_feedback = time.monotonic()
             self.samples += 1
