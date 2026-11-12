@@ -25,6 +25,8 @@ ARG_DEFAULTS = {
     "pid_ki": "0.5",
     "pid_kd": "0.03",
     "pid_bumpless_handoff": "0",
+    "pid_three_stage_transition": "0",
+    "pid_transition_duration_s": "0.10",
     "pid_derivative_filter_tau_s": "0.05",
     "ladrc_b0_left": "18.0",
     "ladrc_b0_right": "18.0",
@@ -56,7 +58,9 @@ ARG_DEFAULTS = {
 
 CONTROL_MODES = ("velocity", "ladrc_torque", "pid_torque")
 GAIN_KEYS = (
-    "pid_kp", "pid_ki", "pid_kd", "pid_bumpless_handoff", "pid_derivative_filter_tau_s",
+    "pid_kp", "pid_ki", "pid_kd", "pid_bumpless_handoff",
+    "pid_three_stage_transition", "pid_transition_duration_s",
+    "pid_derivative_filter_tau_s",
     "ladrc_b0_left", "ladrc_b0_right", "ladrc_wc", "ladrc_wo",
     "current_limit_a", "current_rate_limit_a_per_s", "feedback_timeout_ms",
     "breakaway_start_a", "breakaway_step_a", "breakaway_max_a",
@@ -101,8 +105,14 @@ def _expand_launch(context, *args, **kwargs):
         raise ValueError("At least one PID gain must be positive.")
     if numeric["pid_bumpless_handoff"] not in (0.0, 1.0):
         raise ValueError("pid_bumpless_handoff must be 0 or 1")
+    if numeric["pid_three_stage_transition"] not in (0.0, 1.0):
+        raise ValueError("pid_three_stage_transition must be 0 or 1")
+    if numeric["pid_bumpless_handoff"] and numeric["pid_three_stage_transition"]:
+        raise ValueError("Legacy bumpless and three-stage transition are mutually exclusive")
+    if not 0.02 <= numeric["pid_transition_duration_s"] <= 0.30:
+        raise ValueError("pid_transition_duration_s must be 0.02..0.30 s")
     for key in GAIN_KEYS:
-        if key not in ("pid_kp", "pid_ki", "pid_kd", "pid_bumpless_handoff") and numeric[key] <= 0:
+        if key not in ("pid_kp", "pid_ki", "pid_kd", "pid_bumpless_handoff", "pid_three_stage_transition") and numeric[key] <= 0:
             raise ValueError("{} must be positive".format(key))
     # The hardware sends signed mA as int16. Never request >30A.
     if numeric["current_limit_a"] > 30.0:
@@ -142,6 +152,9 @@ def _expand_launch(context, *args, **kwargs):
     # Hardware expects an exact boolean string, not float text "1.0".
     updates["pid_bumpless_handoff"] = (
         "true" if numeric["pid_bumpless_handoff"] == 1.0 else "false"
+    )
+    updates["pid_three_stage_transition"] = (
+        "true" if numeric["pid_three_stage_transition"] == 1.0 else "false"
     )
     for name, value in updates.items():
         params = hardware.findall("./param[@name='{}']".format(name))
