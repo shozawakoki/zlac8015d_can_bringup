@@ -6,6 +6,7 @@ Refuses to run when an existing controller_manager is discoverable.
 No test command is sent to a real robot.
 """
 import os
+from pathlib import Path
 import signal
 import subprocess
 import sys
@@ -49,6 +50,9 @@ def run_check():
     proc = None
     node = None
     ros_started = False
+    log_handle = None
+    log_path = Path('/tmp/zlac_mock_integration_launch.log')
+    last_controller_listing = 'not queried'
     try:
         # Isolated ROS_DOMAIN_ID avoids accidental interaction with live ROS
         # systems. Must be set before importing/initializing rclpy.
@@ -58,9 +62,11 @@ def run_check():
             "zlac_mock_integration.launch.py",
         ]
         print("Launching CAN-free mock controller...", flush=True)
+        log_handle = log_path.open('w', encoding='utf-8')
+        print('Mock launch log:', log_path, flush=True)
         proc = subprocess.Popen(
             command, env=env, start_new_session=True,
-            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+            stdout=log_handle, stderr=subprocess.STDOUT)
         rclpy.init(args=None)
         ros_started = True
         node = rclpy.create_node("zlac_mock_integration_checker")
@@ -106,6 +112,8 @@ def run_check():
                 ["ros2", "control", "list_controllers",
                  "--controller-manager", "/controller_manager"],
                 capture_output=True, text=True, timeout=5)
+            last_controller_listing = ('exit=%d stdout=%r stderr=%r' %
+                (cmd_result.returncode, cmd_result.stdout, cmd_result.stderr))
             lines = cmd_result.stdout.splitlines()
             ready = cmd_result.returncode == 0 and all(
                 any(line.strip().startswith(name + " ") and
@@ -116,7 +124,8 @@ def run_check():
                 break
             send(0.0, 0.20)
         if not ready:
-            raise RuntimeError("Mock diff_drive_controller not active")
+            raise RuntimeError('Mock diff_drive_controller not active; ' +
+                               last_controller_listing)
         states.clear()
 
         # Command only in isolated mock domain. Wheels should mirror roughly
@@ -140,6 +149,12 @@ def run_check():
         if ros_started and rclpy.ok():
             rclpy.shutdown()
         stop_process(proc)
+        if log_handle is not None:
+            log_handle.close()
+        if log_path.is_file():
+            print('Mock launch log (last 70 lines):', flush=True)
+            for line in log_path.read_text(errors='replace').splitlines()[-70:]:
+                print(line, flush=True)
 
 
 if __name__ == "__main__":
