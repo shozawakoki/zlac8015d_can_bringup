@@ -301,29 +301,85 @@ class MotionSession:
 
 
 def wait_ready(proc, session, timeout_s):
+    """Wait for active controllers AND a fresh wheel sample after each CLI call.
+
+    ros2 control list_controllers can block for seconds on startup. Previously
+    checking feedback age immediately after that blocking call incorrectly
+    rejected a healthy controller (and could consume the entire ready timeout).
+    """
     started = time.monotonic()
-    last_check = 0.0
+    next_query = started
+    last_detail = "waiting for controller manager"
     while time.monotonic() - started < timeout_s:
         if proc.poll() is not None:
-            raise RuntimeError("Experiment launch exited before controllers became ready")
-        session.publish()  # keep only zero-speed commands during startup
+            raise RuntimeError(
+                "Experiment launch exited before controllers became ready; "
+                "inspect the per-trial launch.log")
+        session.publish()  # only ZERO commands during startup
         session.spin(0.05)
-        if time.monotonic() - last_check < 1.0:
+
+        if time.monotonic() < next_query:
             continue
-        last_check = time.monotonic()
-        code, output = process_text(["ros2", "control", "list_controllers"], 3.0)
-        active = [x for x in output.splitlines() if "active" in x]
-        if (code == 0 and
-            any("diff_drive_controller" in x for x in active) and
-            any("joint_state_broadcaster" in x for x in active) and
-            session.latest is not None and
-            time.monotonic() - session.last_feedback < 0.35):
+        code, output = process_text(
+            ["ros2", "control", "list_controllers",
+             "--controller-manager", "/controller_manager"],
+            timeout_s=4.0)
+        active = [line for line in output.splitlines()
+                  if line.split() and line.split()[-1] == "active"]
+        controllers_ready = (
+            code == 0 and
+            any("diff_drive_controller" in line for line in active) and
+            any("joint_state_broadcaster" in line for line in active)
+        )
+
+        # The CLI is blocking. Process ROS feedback *after* it returns, then
+        # require a newly received, valid velocity/current feedback sample.
+        fresh_from = session.samples
+        feedback_deadline = time.monotonic() + 0.75
+        while time.monotonic() < feedback_deadline:
+            if proc.poll() is not None:
+                raise RuntimeError(
+                    "Experiment launch exited during feedback readiness check")
+            session.publish()
+            session.spin(0.04)
+            if (session.samples > fresh_from and
+                session.last_feedback is not None and
+                time.monotonic() - session.last_feedback < 0.35):
+                break
+
+        if controllers_ready and session.latest is not None and (
+            session.last_feedback is not None and
+            time.monotonic() - session.last_feedback < 0.35
+        ):
             session.assert_single_commander()
             session.check_feedback()
             if max(abs(session.latest[0]), abs(session.latest[1])) > 0.2:
                 raise RuntimeError("Robot must be stopped before trial")
+            print(
+                "READY: diff_drive_controller and joint_state_broadcaster active; "
+                "fresh wheel velocity/current feedback received",
+                flush=True)
             return
-    raise RuntimeError("Controllers and fresh wheel feedback not ready in time")
+
+        last_detail = (
+            "controller CLI exit=%s, active=%s, joint_samples=%d, "
+            "last_feedback_age_s=%s, CLI=%s" % (
+                code,
+                [line.strip() for line in active],
+                session.samples,
+                ("%.3f" % (time.monotonic() - session.last_feedback)
+                 if session.last_feedback is not None else "none"),
+                output.strip().replace("\\n", " ")[:300],
+            )
+        )
+        print("WAITING: " + last_detail, flush=True)
+        next_query = time.monotonic() + 1.0
+
+    raise RuntimeError(
+        "Controllers/feedback not ready in %.1f s: %s. "
+        "Inspect launch.log for spawner and hardware errors." %
+        (timeout_s, last_detail)
+    )
 
 
 def follow_profile(trial, plan, proc, session):
@@ -413,14 +469,32 @@ def run_trial(trial, plan, root, index, total):
                     recorded, trial["wheel_radius_m"], trial["wheel_separation_m"])
                 if (record["metrics"]["active_samples"] == 0 or
                     record["metrics"]["cmd_messages"] == 0):
-                    record["status"] = "aborted"
-                    record["reason"] = "No usable active speed-response measurements"
+                    if record["status"] == "completed":
+                        record["status"] = "aborted"
+                        record["reason"] = (
+                            "No usable active speed-response measurements"
+                        )
+                    else:
+                        record["diagnostic"] = (
+                            "No active speed-response samples; "
+                            "original execution error is preserved"
+                        )
             except Exception as exc:
-                record["status"] = "aborted"
-                record["reason"] = "Metrics failed: " + str(exc)
+                if record["status"] == "completed":
+                    record["status"] = "aborted"
+                    record["reason"] = "Metrics failed: " + str(exc)
+                else:
+                    record["metric_error"] = str(exc)
         else:
-            record["status"] = "aborted"
-            record["reason"] = "Experiment recorder did not produce a unique dataset"
+            if record["status"] == "completed":
+                record["status"] = "aborted"
+                record["reason"] = (
+                    "Experiment recorder did not produce a unique dataset"
+                )
+            else:
+                record["recording_error"] = (
+                    "Experiment recorder did not produce a unique dataset"
+                )
         save_json(trial_dir / "trial.json", record)
     return record
 
