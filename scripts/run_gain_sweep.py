@@ -330,8 +330,8 @@ def wait_ready(proc, session, timeout_s):
         # can therefore report active=[] even though both are active.
         # Detect whole-word 'active' in each controller row after removing
         # terminal escape sequences. Do not accept 'inactive'.
-        ansi_escape = re.compile(r"\\x1b\\[[0-?]*[ -/]*[@-~]")
-        clean_output = ansi_escape.sub("", output).replace("\\r", "\\n")
+        ansi_escape = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+        clean_output = ansi_escape.sub("", output).replace("\r", "\n")
         active = []
         for line in clean_output.splitlines():
             words = line.split()
