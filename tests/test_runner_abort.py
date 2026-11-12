@@ -75,7 +75,7 @@ class AbortPathTests(unittest.TestCase):
                 stack.enter_context(patch.object(runner, "find_recorded_run", return_value=None))
                 with contextlib.redirect_stdout(io.StringIO()):
                     record = runner.run_trial(
-                        self.trial(), {}, Path(temp), 1, 1)
+                        self.trial(), {"ready_timeout_s": 5.0}, Path(temp), 1, 1)
             self.assertTrue((Path(temp) / "001_mock_trial_mock_profile_rep01" /
                              "trial.json").exists())
         return events, record
