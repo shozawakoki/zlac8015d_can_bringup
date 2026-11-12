@@ -52,3 +52,16 @@ source install/setup.bash
 The standalone C++ test uses the same `compute_pi_transition()` function as the hardware controller. It verifies bounded fade, 80% speed cutoff, timeout, braking, normal-stop suppression, and sign reversal. It is **not** a full integrated test of the ROS2 state machine, CAN feedback, or safety monitor. The package build and launch plan dry-run must additionally pass; separate offline integration tests of stop/lockout/synchronization are still required before any new physical-motion test.
 
 To prepare the existing `pi_handoff_1.yaml` plan for **dry-run only**, set gains `pid_bumpless_handoff: 0`, `pid_three_stage_transition: 1`, `pid_transition_duration_s: 0.10`, and confirm `surface: wheels_elevated`. The dry-run must not be invoked with `--execute`.
+
+## Transition lifecycle regression test
+
+The production hardware controller uses `begin_pi_transition`, `advance_pi_transition`, and `cancel_pi_transition` from `pi_transition_lifecycle.hpp`. An additional ROS-independent C++ test invokes the same helpers with mock wheel state. It checks the state progression, cutoff, timeout, stop/brake cancellation, direction-reversal reset, and coordinated cancellation.
+
+```bash
+cd ~/ros2_ws/src/zlac8015d_hardware
+g++ -std=c++17 -Wall -Wextra -Werror -Iinclude \
+  tests/test_pi_transition_lifecycle.cpp -o /tmp/test_pi_transition_lifecycle
+/tmp/test_pi_transition_lifecycle
+```
+
+This does **not** exercise actual `ros2_control` scheduling or physical stop/lockout hardware. The full control plugin must still compile and integration/safety tests are required before motion.
