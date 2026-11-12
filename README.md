@@ -28,6 +28,32 @@ ls -lL ~/ros2_ws/install/zlac_can_bringup/lib/zlac_can_bringup/record_experiment
 上記 `ls` でファイルが存在し、実行権限（`x`）が付いていることを確認してください。
 作業ブランチを切り替えても、現在の `main` には変更が入りません。
 
+## ROS 2 controller active 状態の誤判定修正
+
+`ros2 control list_controllers` では `active` が表示されていても、
+ターミナルのANSI色付けを含む場合、従来の文字列比較で
+`active=[]` になる可能性がありました。
+
+このブランチはCLI出力の制御文字を除去して状態を解析します。
+また、準備判定の後に取得する新しい車輪フィードバックの確認と、
+中断した本来の理由を保存する従来修正も含みます。
+
+```bash
+source /opt/ros/humble/setup.bash
+cd ~/ros2_ws/src/zlac8015d_can_bringup
+git fetch origin
+git switch fix/sweep-active-state-parser
+cd ~/ros2_ws
+colcon build --packages-select zlac_can_bringup --symlink-install --cmake-force-configure
+source install/setup.bash
+
+# Offline parser test (commands no motors)
+python3 ~/ros2_ws/src/zlac8015d_can_bringup/test/test_active_state_parser.py
+
+# Dry run
+ros2 run zlac_can_bringup run_gain_sweep.py --config ~/single_trial.yaml
+```
+
 ## 一括試験で active_samples=0 となる場合（診断修正）
 
 起動後の `ros2 control list_controllers` 呼び出しが同期処理で数秒待機する間、
