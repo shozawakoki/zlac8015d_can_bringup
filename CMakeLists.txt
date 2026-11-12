@@ -30,7 +30,13 @@ install(
 
 # Executed by zlac_experiment.launch.py through ros2 launch / ros2 run.
 install(
-  PROGRAMS scripts/record_experiment.py
+  PROGRAMS scripts/record_experiment.py scripts/run_gain_sweep.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+# sweep_core.py is imported by the installed run_gain_sweep.py executable.
+install(
+  FILES scripts/sweep_core.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
