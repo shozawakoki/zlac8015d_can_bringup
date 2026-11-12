@@ -100,3 +100,48 @@ No real-world measurement from this new PID plan has been collected.
 The numbers `Kp=0.4,Ki=0.2,Kd=0.01,0.02` are initial candidates, **not
 identified parameters**. The 3-stage simulation branch is no longer part
 of the tuning workflow.
+
+## Ground-contact calibration (operator-confirmed safety)
+
+The user has selected **ground-contact** gain identification rather than
+wheels-elevated identification. Ground configurations are separate from the
+previous elevated-wheel templates:
+
+- `config/pid_calibration_ground_preflight.yaml`: one PI-reference trial.
+- `config/pid_calibration_ground.yaml`: three trials (Kd=0, 0.01, 0.02).
+
+Each has 1s zero, 2s forward at 0.05 m/s, 3s zero. Nominal travel
+is 0.10m (actual measured travel is monitored separately). Wheel reference
+is 0.78125rad/s. The configured monitor wheel bound is 1.2rad/s, but
+the existing runner actually aborts when observed speed **exceeds
+1.44rad/s** because it uses a 1.2 multiplier. The running trace must
+be reviewed against this distinction. This is not an independent hardware
+speed limiter.
+
+Run safe dry-runs first:
+
+```bash
+cd ~/ros2_ws/src/zlac8015d_can_bringup
+git pull --ff-only
+source /opt/ros/humble/setup.bash
+cd ~/ros2_ws
+colcon build --symlink-install --packages-select zlac_can_bringup
+source install/setup.bash
+cd ~/ros2_ws/src/zlac8015d_can_bringup
+python3 -m unittest discover -s tests -p 'test_pid_calibration_ground.py' -v
+ros2 run zlac_can_bringup run_gain_sweep.py --config \
+  ~/ros2_ws/src/zlac8015d_can_bringup/config/pid_calibration_ground_preflight.yaml
+ros2 run zlac_can_bringup run_gain_sweep.py --config \
+  ~/ros2_ws/src/zlac8015d_can_bringup/config/pid_calibration_ground.yaml
+```
+
+Only when the operator has verified stopping, clear ground travel path,
+and E-stop may they run the preflight **interactively** with
+`--execute --i-have-e-stop`. Never use `--yes` as an unintended bypass.
+Review logs of the first attempt and verify standstill before the next
+trial. Run the three-candidate plan only if the preflight passes and
+measured speed/current/stopping are acceptable. Aborted trials are not
+valid gain measurements.
+
+`Kp=0.4,Ki=0.2,Kd=0.01/0.02` are candidates, not measured optima.
+Do not infer gain suitability from nominal model simulations.
