@@ -145,3 +145,51 @@ valid gain measurements.
 
 `Kp=0.4,Ki=0.2,Kd=0.01/0.02` are candidates, not measured optima.
 Do not infer gain suitability from nominal model simulations.
+
+## Expanded staged search (43 individual trials, generated offline)
+
+After the one-run ground preflight has been reviewed, use
+`scripts/generate_pid_grid.py` to construct THREE separate plans. The program
+only writes YAML and runs its validator; it **never operates motors**.
+
+- **Stage A (12 trials)**: `Kp in [0.2,0.4,0.6,0.8]` by
+  `Ki in [0.1,0.2,0.4]`, `Kd=0`. The `0.4/0.2` reference is first.
+- **Stage B (13 trials)**: reference `Kd=0` plus
+  `Kd in [0.005,0.01,0.02,0.04]` ×
+  `derivative_tau in [0.03,0.05,0.10]s`, initially fixed
+  `Kp=0.4,Ki=0.2`. **Update Kp/Ki after reviewing Stage A**; the generator
+  does not automatically transfer the best result.
+- **Stage C (18 trials)**: two initially assigned `PI` / `PID`
+  candidate settings, speed commands 0.04/0.05/0.06m/s,
+  repeated 3 times. **Update the PID candidate gain based on Stage B**.
+
+Total: 43 trials across three independent campaigns, **not** one unattended
+43-trial experiment. Each trial is a short stop-start profile, and the
+current/speed/travel software guards remain enabled. Tests are ground-contact
+and require a clear travel zone, physical E-stop, confirmed hardware stopping,
+one live ROS controller manager and active operator.
+
+```bash
+cd ~/ros2_ws/src/zlac8015d_can_bringup
+git pull --ff-only
+python3 -m unittest discover -s tests -p 'test_pid_grid.py' -v
+python3 scripts/generate_pid_grid.py --output-dir /tmp/pid_ground_grid
+source /opt/ros/humble/setup.bash
+source ~/ros2_ws/install/setup.bash
+ros2 run zlac_can_bringup run_gain_sweep.py --config /tmp/pid_ground_grid/A_PI_grid.yaml
+ros2 run zlac_can_bringup run_gain_sweep.py --config /tmp/pid_ground_grid/B_PID_grid.yaml
+ros2 run zlac_can_bringup run_gain_sweep.py --config /tmp/pid_ground_grid/C_validation.yaml
+```
+
+These are three **dry runs**. To run real motors requires the existing
+runner's explicit `--execute --i-have-e-stop` opt-in per campaign.
+No automated mass execution is part of the setup instructions. It is
+important to review the baseline trial logs and initial overshoot before
+authorizing the larger A sweep, and then review all A data before B, and B
+before C. The driver had a historical 1.86rad/s overspeed and the
+runner's configured 1.2rad/s speed limit currently triggers at 1.44rad/s
+due to 20% monitoring tolerance; do not treat this as a hardware speed cap.
+
+The three stages are designed to find reasonable parameters efficiently,
+not to certify optimal gains. Stop exploring once a stable and
+reproducible PID baseline is established for ADRC comparison.
