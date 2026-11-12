@@ -28,9 +28,27 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
-# Executed by zlac_experiment.launch.py through ros2 launch / ros2 run.
+# With colcon --symlink-install, installing PROGRAMS can point at the
+# non-executable GitHub source (mode 0644). Make executable copies in the
+# build tree so the ROS 2 libexec symlinks have valid execute permissions.
+set(_zlac_script_dir "${CMAKE_CURRENT_BINARY_DIR}/executable_scripts")
+file(MAKE_DIRECTORY "${_zlac_script_dir}")
+foreach(_zlac_script record_experiment.py run_gain_sweep.py)
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/scripts/${_zlac_script}"
+    "${_zlac_script_dir}/${_zlac_script}"
+    COPYONLY
+  )
+  file(CHMOD "${_zlac_script_dir}/${_zlac_script}"
+    PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+                GROUP_READ GROUP_EXECUTE
+                WORLD_READ WORLD_EXECUTE)
+endforeach()
+
 install(
-  PROGRAMS scripts/record_experiment.py scripts/run_gain_sweep.py
+  PROGRAMS
+    "${_zlac_script_dir}/record_experiment.py"
+    "${_zlac_script_dir}/run_gain_sweep.py"
   DESTINATION lib/${PROJECT_NAME}
 )
 
