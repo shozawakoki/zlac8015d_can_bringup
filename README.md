@@ -6,6 +6,28 @@ ZLAC8015D モータドライバを搭載した対向二輪型移動ロボット�
 
 > 本 README は `main` ブランチの実ファイルに基づいています。起動対象は `launch/zlac_can_bringup.launch.py`、設定は `config/controllers.yaml` と `urdf/orange_go_2025.urdf` です。CAN 速度やモータ配線などの機体固有条件は、実機で確認してください。
 
+## Python 記録ノードが起動しない場合
+
+`executable 'record_experiment.py' not found on the libexec directory` の場合、ROS 2 用の
+`lib/zlac_can_bringup/` に Python 実行ファイルが存在しない、または
+`colcon build --symlink-install` 下のシンボリックリンク先に実行権限がない可能性があります。
+
+この修正ブランチでは CMake のビルドディレクトリに実行権限付きのスクリプトを複製してから
+`install(PROGRAMS)` を行います。変更後は次を実行します。
+
+```bash
+cd ~/ros2_ws/src/zlac8015d_can_bringup
+git fetch origin
+git switch fix/python-executable-symlink
+cd ~/ros2_ws
+colcon build --packages-select zlac_can_bringup --symlink-install --cmake-force-configure
+source install/setup.bash
+ls -lL ~/ros2_ws/install/zlac_can_bringup/lib/zlac_can_bringup/record_experiment.py
+```
+
+上記 `ls` でファイルが存在し、実行権限（`x`）が付いていることを確認してください。
+作業ブランチを切り替えても、現在の `main` には変更が入りません。
+
 ## ゲイン候補を順番に自動試験（devel/auto-gain-sweep）
 
 PID、LADRC、内蔵速度制御の複数候補をYAMLで定義し、**ゲイン適用 → 速度指令 →
