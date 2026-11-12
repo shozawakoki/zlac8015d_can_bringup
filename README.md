@@ -6,6 +6,24 @@ ZLAC8015D モータドライバを搭載した対向二輪型移動ロボット�
 
 > 本 README は `main` ブランチの実ファイルに基づいています。起動対象は `launch/zlac_can_bringup.launch.py`、設定は `config/controllers.yaml` と `urdf/orange_go_2025.urdf` です。CAN 速度やモータ配線などの機体固有条件は、実機で確認してください。
 
+## PID / LADRC 実機実験と自動記録（devel/experiment-logging）
+
+このブランチでは、制御方式・各ゲイン・試験条件を launch 引数で指定し、
+`/cmd_vel`、`/joint_states`、`/odom` を実験ごとに CSV へ記録する
+`zlac_experiment.launch.py` を追加しています。使用には
+[hardware の `devel/pid`](https://github.com/shozawakoki/zlac8015d_hardware/tree/devel/pid)
+が必要です。**速度指令は自動生成せず、記録専用**です。
+
+```bash
+ros2 launch zlac_can_bringup zlac_experiment.launch.py \
+  mode:=pid_torque pid_kp:=0.7 pid_ki:=0.5 pid_kd:=0.03 \
+  test_label:=straight trial:=01
+```
+
+ゲイン、反復番号、予定速度、試験時間、路面・外乱条件などの指定方法、
+ビルド、ログの保存形式は [EXPERIMENTS.md](EXPERIMENTS.md) を参照してください。
+既存の `zlac_can_bringup.launch.py` は変更していません。
+
 ## 動作環境
 
 - Ubuntu 22.04 / ROS 2 Humble
