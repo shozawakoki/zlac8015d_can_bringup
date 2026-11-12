@@ -33,6 +33,9 @@ ARG_DEFAULTS = {
     "current_rate_limit_a_per_s": "20.0",
     "feedback_timeout_ms": "30.0",
     "test_label": "speed_tracking",
+    "planned_linear_m_s": "0.2",
+    "planned_angular_rad_s": "0.0",
+    "planned_duration_s": "10.0",
     "trial": "01",
     "surface": "unspecified",
     "disturbance": "none",
@@ -61,7 +64,9 @@ def _expand_launch(context, *args, **kwargs):
         )
 
     numeric = {}
-    for key in GAIN_KEYS:
+    for key in GAIN_KEYS + (
+        "planned_linear_m_s", "planned_angular_rad_s", "planned_duration_s"
+    ):
         try:
             value = float(values[key])
         except ValueError as exc:
@@ -70,6 +75,8 @@ def _expand_launch(context, *args, **kwargs):
             raise ValueError("{} must be finite".format(key))
         numeric[key] = value
 
+    if numeric["planned_duration_s"] <= 0:
+        raise ValueError("planned_duration_s must be positive")
     for key in ("pid_kp", "pid_ki", "pid_kd"):
         if numeric[key] < 0:
             raise ValueError("{} must not be negative".format(key))
