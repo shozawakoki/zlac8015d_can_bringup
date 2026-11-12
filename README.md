@@ -28,6 +28,31 @@ ls -lL ~/ros2_ws/install/zlac_can_bringup/lib/zlac_can_bringup/record_experiment
 上記 `ls` でファイルが存在し、実行権限（`x`）が付いていることを確認してください。
 作業ブランチを切り替えても、現在の `main` には変更が入りません。
 
+## 一括試験スクリプトのモジュール読み込み修正
+
+`ros2 run zlac_can_bringup run_gain_sweep.py` の実行時に
+`ModuleNotFoundError: No module named 'sweep_core'` が出る問題に対応しました。
+`--symlink-install` の場合、`run_gain_sweep.py` がビルドディレクトリ側の
+実体を参照することがあります。補助モジュール `sweep_core.py` を
+スクリプト実体と同じ `build/.../executable_scripts/` に配置し、
+ROS 2 の `lib/zlac_can_bringup/` にもインストールするように修正しています。
+
+```bash
+cd ~/ros2_ws/src/zlac8015d_can_bringup
+git fetch origin
+git switch fix/sweep-core-import
+
+cd ~/ros2_ws
+colcon build --packages-select zlac_can_bringup \
+  --symlink-install --cmake-force-configure
+source install/setup.bash
+
+ros2 run zlac_can_bringup run_gain_sweep.py \
+  --config ~/ros2_ws/src/zlac8015d_can_bringup/config/gain_sweep_example.yaml
+```
+
+最後の実行は**ドライラン**です。モータへの速度指令を送信しません。
+
 ## ゲイン候補を順番に自動試験（devel/auto-gain-sweep）
 
 PID、LADRC、内蔵速度制御の複数候補をYAMLで定義し、**ゲイン適用 → 速度指令 →
