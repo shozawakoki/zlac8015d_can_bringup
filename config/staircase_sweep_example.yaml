@@ -1,0 +1,59 @@
+# Example staircase reference for verifying the new startup/stall logic.
+# Starting setting is a SINGLE built-in speed-control trial.
+# Add PID/LADRC candidates ONLY after separately validating startup and stop.
+# The positive-command travel integral is 0.45 m (under the 0.50 m cap).
+# Hold times are short; use per-stage transient metrics, not steady-state claims.
+schema_version: 1
+output_root: ~/ros2_experiments
+surface: wheels_elevated_first
+disturbance: none
+repeats: 1
+publish_hz: 20
+ready_timeout_s: 25
+between_trials_s: 4
+wheel_radius_m: 0.064
+wheel_separation_m: 0.354
+
+safety:
+  max_linear_m_s: 0.20
+  max_angular_rad_s: 0.40
+  max_wheel_rad_s: 10.0
+  max_current_a: 4.0
+
+defaults:
+  pid_kp: 0.7
+  pid_ki: 0.5
+  pid_kd: 0.03
+  pid_derivative_filter_tau_s: 0.05
+  ladrc_b0_left: 18.0
+  ladrc_b0_right: 18.0
+  ladrc_wc: 5.0
+  ladrc_wo: 20.0
+  current_limit_a: 4.0
+  current_rate_limit_a_per_s: 20.0
+  feedback_timeout_ms: 30.0
+  breakaway_start_a: 0.65
+  breakaway_step_a: 0.10
+  breakaway_max_a: 2.0
+  breakaway_step_samples: 20
+  breakaway_start_speed_rad_s: 0.30
+  breakaway_start_samples: 6
+  stall_speed_rad_s: 0.10
+  stall_samples: 80
+  stall_min_drive_current_a: 0.20
+
+profiles:
+  - name: staircase_short
+    stages:
+      - {duration_s: 2.0, linear_x: 0.00, angular_z: 0.00}
+      - {duration_s: 1.0, linear_x: 0.05, angular_z: 0.00}
+      - {duration_s: 1.0, linear_x: 0.10, angular_z: 0.00}
+      - {duration_s: 1.0, linear_x: 0.15, angular_z: 0.00}
+      - {duration_s: 1.0, linear_x: 0.10, angular_z: 0.00}
+      - {duration_s: 1.0, linear_x: 0.05, angular_z: 0.00}
+      - {duration_s: 2.0, linear_x: 0.00, angular_z: 0.00}
+
+candidates:
+  - name: drive_staircase_check
+    mode: velocity
+    profiles: [staircase_short]
