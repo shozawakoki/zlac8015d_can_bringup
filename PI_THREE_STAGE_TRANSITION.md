@@ -80,3 +80,25 @@ colcon build --symlink-install --packages-select zlac8015d_hardware zlac_can_bri
 ```
 
 The regression test includes the previous observed 1.86/1.45 rad/s safety-abort velocities. Passing these tests does **not** verify real-time stopping latency, ROS2 controller interactions, CAN link interruption, physical emergency stop, or the complete feedback-to-zero-command chain. No `--execute` is part of this procedure.
+
+## Runner abort-to-stop offline integration tests (no ROS/CAN)
+
+The no-motion tests under `tests/test_runner_abort.py` execute the production
+`run_trial()` with mocked launch/session boundaries and inject overspeed or
+feedback-timeout exceptions. They verify abort recording and the order
+`MotionSession.close()` -> `stop_launch()`, including a failure in close.
+
+`tests/test_motion_session_close.py` separately exercises the *real*
+`MotionSession.zero_for()` and `MotionSession.close()` methods with fake
+Twist/publisher/node objects. It checks zero Twist values and shutdown ordering.
+
+```bash
+cd ~/ros2_ws/src/zlac8015d_can_bringup
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+python3 -m py_compile scripts/run_gain_sweep.py scripts/safety_rules.py scripts/sweep_core.py
+```
+
+These are partial integration tests with mocked ROS boundaries, **not** a running
+`ros2_control` controller or CAN bus, and do not verify the actual stop-current
+trajectory or physical E-stop. Hardware movement is still prohibited until
+additional HIL/offline validation and an independent emergency-stop review.
