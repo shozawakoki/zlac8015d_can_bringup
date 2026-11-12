@@ -6,6 +6,25 @@ ZLAC8015D モータドライバを搭載した対向二輪型移動ロボット�
 
 > 本 README は `main` ブランチの実ファイルに基づいています。起動対象は `launch/zlac_can_bringup.launch.py`、設定は `config/controllers.yaml` と `urdf/orange_go_2025.urdf` です。CAN 速度やモータ配線などの機体固有条件は、実機で確認してください。
 
+## ゲイン候補を順番に自動試験（devel/auto-gain-sweep）
+
+PID、LADRC、内蔵速度制御の複数候補をYAMLで定義し、**ゲイン適用 → 速度指令 →
+車輪応答記録 → 停止 → RMSE/電流RMS算出 → 次候補**まで自動実行します。
+`zlac8015d_hardware` は `devel/pid` を使用してください。
+`main` への変更はありません。
+
+**初期動作はドライラン（車輪を動かさない）**です。
+
+```bash
+ros2 run zlac_can_bringup run_gain_sweep.py \
+  --config ~/ros2_ws/src/zlac8015d_can_bringup/config/gain_sweep_example.yaml
+```
+
+安全停止手段と試験空間を確認した後、`--execute --i-have-e-stop` を付け、
+対話確認を行うと速度指令を自動送信します。**運転中の監視者と物理非常停止が必須**です。
+使い方、既定の10候補、制限値、出力データについては
+[一括ゲイン試験の説明](AUTO_GAIN_SWEEP.md) を参照してください。
+
 ## PID / LADRC 実機実験と自動記録（devel/experiment-logging）
 
 このブランチでは、制御方式・各ゲイン・試験条件を launch 引数で指定し、
