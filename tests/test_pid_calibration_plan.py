@@ -15,6 +15,15 @@ spec.loader.exec_module(ranking)
 
 
 class PidPlanTests(unittest.TestCase):
+    def test_preflight_is_one_trial_only(self):
+        plan = load_plan(ROOT / "config" / "pid_calibration_preflight.yaml")
+        self.assertEqual(len(plan["trials"]), 1)
+        self.assertEqual(plan["trials"][0]["name"], "PI_reference")
+        self.assertEqual(plan["trials"][0]["gains"]["pid_kd"], 0.0)
+        self.assertEqual(plan["trials"][0]["gains"]["pid_three_stage_transition"], 0)
+        self.assertEqual(plan["trials"][0]["gains"]["pid_bumpless_handoff"], 0)
+        self.assertEqual(plan["surface"], "wheels_elevated")
+
     def test_three_candidates_and_strict_safety(self):
         plan = load_plan(ROOT / "config" / "pid_calibration_elevated.yaml")
         trials = plan["trials"]
