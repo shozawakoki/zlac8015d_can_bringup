@@ -102,3 +102,27 @@ These are partial integration tests with mocked ROS boundaries, **not** a runnin
 `ros2_control` controller or CAN bus, and do not verify the actual stop-current
 trajectory or physical E-stop. Hardware movement is still prohibited until
 additional HIL/offline validation and an independent emergency-stop review.
+
+## CAN-free ROS 2 controller integration smoke test
+
+New files:
+- `launch/zlac_mock_integration.launch.py`: loads the existing wheel joints and controller YAML but replaces the real ZLAC hardware plugin **in memory** with `mock_components/GenericSystem`. Removes CAN hardware parameters and omits the experiment recorder.
+- `scripts/run_mock_integration.py`: isolated-domain, start/stop smoke test using `/cmd_vel` and `/joint_states`. Requires both ROS 2 controllers active before sending a mock 0.05 m/s speed command. Checks returned wheel state velocities, then publishes zero and checks a return to zero.
+- `tests/test_mock_urdf.py`: inspects the generated mock URDF and verifies that the real URDF file is unchanged and no CAN plugin/parameters remain.
+
+**Do not use the real experiment launch for this test.** Do not run it while another robot controller manager is operating. The ROS domain must be isolated from every in-service robot. The test script refuses to run if `ROS_DOMAIN_ID` is missing.
+
+```bash
+cd ~/ros2_ws/src/zlac8015d_can_bringup
+git pull --ff-only
+source /opt/ros/humble/setup.bash
+cd ~/ros2_ws
+colcon build --symlink-install --packages-select zlac_can_bringup
+source install/setup.bash
+cd ~/ros2_ws/src/zlac8015d_can_bringup
+python3 -m unittest discover -s tests -p 'test_mock_urdf.py' -v
+python3 -m py_compile launch/zlac_mock_integration.launch.py scripts/run_mock_integration.py
+ROS_DOMAIN_ID=197 python3 scripts/run_mock_integration.py
+```
+
+ROS_DOMAIN_ID=197 is only an example: choose a domain not used by any connected robot. This script does not create a fake CAN interface, and the launch never loads the ZLAC hardware plugin. It is a **transport/controller smoke test only**, not a test of the 3-stage PI controller or physical emergency stop. The exact stop-current trajectory still needs a safe plant/hardware-in-the-loop test using the actual algorithm.
