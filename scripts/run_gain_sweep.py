@@ -27,6 +27,7 @@ import traceback
 import uuid
 
 from sweep_core import compute_metrics, load_plan
+from stage_metrics import compute_stage_metrics, write_stage_metrics
 
 CONSENT_TEXT = "I HAVE AN EMERGENCY STOP"
 RESULT_FIELDS = [
@@ -482,6 +483,25 @@ def run_trial(trial, plan, root, index, total):
             try:
                 record["metrics"] = compute_metrics(
                     recorded, trial["wheel_radius_m"], trial["wheel_separation_m"])
+                # Segment by the ACTUAL recorded cmd_vel transitions, rather
+                # than assumed stage durations or ROS launch startup time.
+                stage_rows = compute_stage_metrics(
+                    recorded, trial["wheel_radius_m"], trial["wheel_separation_m"])
+                stage_file = trial_dir / "stage_metrics.csv"
+                write_stage_metrics(stage_file, stage_rows)
+                record["stage_metrics_csv"] = str(stage_file)
+                record["recorded_active_stages"] = len(stage_rows)
+                expected_stages = sum(
+                    1 for stage in trial["stages"]
+                    if abs(stage["linear_x"]) + abs(stage["angular_z"]) > 1e-6
+                )
+                if (record["status"] == "completed" and
+                    (len(stage_rows) != expected_stages or
+                     any(stage["samples"] == 0 for stage in stage_rows))):
+                    record["status"] = "aborted"
+                    record["reason"] = (
+                        "Recorded speed stages do not match the planned profile"
+                    )
                 if (record["metrics"]["active_samples"] == 0 or
                     record["metrics"]["cmd_messages"] == 0):
                     if record["status"] == "completed":
