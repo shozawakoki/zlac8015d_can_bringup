@@ -301,6 +301,20 @@ class MotionSession:
                 self.rclpy.shutdown()
 
 
+def parse_active_controllers(output):
+    """Parse plain or ANSI-colored ros2 control list_controllers output."""
+    ansi_escape = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+    clean_output = ansi_escape.sub("", output).replace("\r", "\n")
+    active = set()
+    for line in clean_output.splitlines():
+        words = line.split()
+        if len(words) >= 3 and words[0] in (
+            "diff_drive_controller", "joint_state_broadcaster"
+        ) and "active" in words[2:]:
+            active.add(words[0])
+    return active
+
+
 def wait_ready(proc, session, timeout_s):
     """Wait for active controllers AND a fresh wheel sample after each CLI call.
 
@@ -325,20 +339,8 @@ def wait_ready(proc, session, timeout_s):
             ["ros2", "control", "list_controllers",
              "--controller-manager", "/controller_manager"],
             timeout_s=4.0)
-        # ros2 control CLI may colorize status using ANSI escapes (for
-        # example, "\\x1b[32mactive\\x1b[0m"). A raw split()[-1] comparison
-        # can therefore report active=[] even though both are active.
-        # Detect whole-word 'active' in each controller row after removing
-        # terminal escape sequences. Do not accept 'inactive'.
-        ansi_escape = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
-        clean_output = ansi_escape.sub("", output).replace("\r", "\n")
-        active = []
-        for line in clean_output.splitlines():
-            words = line.split()
-            if len(words) >= 3 and words[0] in (
-                "diff_drive_controller", "joint_state_broadcaster"
-            ) and "active" in words[2:]:
-                active.append(words[0])
+        # Accept both plain and ANSI colorized CLI output.
+        active = parse_active_controllers(output)
         controllers_ready = (
             code == 0 and
             "diff_drive_controller" in active and
