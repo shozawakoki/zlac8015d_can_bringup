@@ -16,6 +16,8 @@ GAIN_DEFAULTS = {
     "pid_ki": 0.5,
     "pid_kd": 0.03,
     "pid_bumpless_handoff": 0,
+    "pid_three_stage_transition": 0,
+    "pid_transition_duration_s": 0.10,
     "pid_derivative_filter_tau_s": 0.05,
     "ladrc_b0_left": 18.0,
     "ladrc_b0_right": 18.0,
@@ -217,10 +219,16 @@ def load_plan(filename):
 def validate_gains(g, safety):
     if g["pid_bumpless_handoff"] not in (0, 1):
         raise ValueError("pid_bumpless_handoff must be 0 or 1")
+    if g["pid_three_stage_transition"] not in (0, 1):
+        raise ValueError("pid_three_stage_transition must be 0 or 1")
+    if g["pid_bumpless_handoff"] and g["pid_three_stage_transition"]:
+        raise ValueError("PI handoff modes must be mutually exclusive")
+    if not 0.02 <= g["pid_transition_duration_s"] <= 0.30:
+        raise ValueError("pid_transition_duration_s must be 0.02..0.30")
     for name, val in g.items():
         if not math.isfinite(val):
             raise ValueError(name + " must be finite")
-        if val < 0 or (name not in ("pid_kp", "pid_ki", "pid_kd", "pid_bumpless_handoff") and val <= 0):
+        if val < 0 or (name not in ("pid_kp", "pid_ki", "pid_kd", "pid_bumpless_handoff", "pid_three_stage_transition") and val <= 0):
             raise ValueError(name + " is outside permitted range")
     if sum(g[k] for k in ("pid_kp", "pid_ki", "pid_kd")) <= 0:
         # Disabled controller gains are not a useful sweep candidate.
