@@ -139,6 +139,10 @@ def _expand_launch(context, *args, **kwargs):
         raise ValueError("The robot URDF has no ros2_control hardware element.")
     updates = {"control_mode": mode}
     updates.update({key: str(numeric[key]) for key in GAIN_KEYS})
+    # Hardware expects an exact boolean string, not float text "1.0".
+    updates["pid_bumpless_handoff"] = (
+        "true" if numeric["pid_bumpless_handoff"] == 1.0 else "false"
+    )
     for name, value in updates.items():
         params = hardware.findall("./param[@name='{}']".format(name))
         if len(params) > 1:
