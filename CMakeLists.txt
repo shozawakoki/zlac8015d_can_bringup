@@ -52,9 +52,16 @@ install(
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# sweep_core.py is imported by the installed run_gain_sweep.py executable.
+# With --symlink-install, the Python entry point may execute from its
+# build-tree target. Place sweep_core.py beside it in both locations:
+# build/executable_scripts/ (symlink target) and install/libexec/ (ROS 2).
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/scripts/sweep_core.py"
+  "${_zlac_script_dir}/sweep_core.py"
+  COPYONLY
+)
 install(
-  FILES scripts/sweep_core.py
+  FILES "${_zlac_script_dir}/sweep_core.py"
   DESTINATION lib/${PROJECT_NAME}
 )
 
