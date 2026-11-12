@@ -31,6 +31,8 @@ HARD_MAX_ANGULAR_RAD_S = 0.40
 HARD_MAX_CURRENT_A = 8.0
 HARD_MAX_WHEEL_RAD_S = 10.0
 HARD_MAX_TRIAL_SECONDS = 45.0
+HARD_MAX_TRAVEL_M = 0.50
+HARD_MAX_YAW_RAD = 0.80
 HARD_MAX_TRIALS = 120
 
 
@@ -96,6 +98,8 @@ def load_plan(filename):
             raise ValueError("Profile %s needs at least 3 stages" % name)
         output = []
         total = 0.0
+        travel = 0.0
+        rotation = 0.0
         for stage in stages:
             if not isinstance(stage, dict):
                 raise ValueError("Each stage must be an object")
@@ -110,6 +114,12 @@ def load_plan(filename):
             output.append({"duration_s": duration, "linear_x": v,
                            "angular_z": w})
             total += duration
+            travel += abs(v) * duration
+            rotation += abs(w) * duration
+        if travel > HARD_MAX_TRAVEL_M or rotation > HARD_MAX_YAW_RAD:
+            raise ValueError(
+                "Profile %s exceeds path-length/turn bounds (%.2f m, %.2f rad)" %
+                (name, travel, rotation))
         if total > HARD_MAX_TRIAL_SECONDS:
             raise ValueError("Total profile duration exceeds 45 seconds")
         for stage in (output[0], output[-1]):
