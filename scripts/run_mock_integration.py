@@ -6,6 +6,7 @@ Refuses to run when an existing controller_manager is discoverable.
 No test command is sent to a real robot.
 """
 import os
+import re
 from pathlib import Path
 import signal
 import subprocess
@@ -24,6 +25,17 @@ def assert_no_existing_controller():
     if any(name.rsplit("/", 1)[-1] == "zlac_gain_sweep_commander"
            for name in names):
         raise RuntimeError("Existing experiment commander detected")
+
+
+def parse_active_controllers(output):
+    """Parse colored or plain ROS 2 controller-manager CLI output."""
+    clean = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output).replace("\r", "\n")
+    active = set()
+    for line in clean.splitlines():
+        words = line.split()
+        if len(words) >= 3 and words[2] == "active":
+            active.add(words[0])
+    return active
 
 
 def stop_process(proc):
@@ -114,12 +126,10 @@ def run_check():
                 capture_output=True, text=True, timeout=5)
             last_controller_listing = ('exit=%d stdout=%r stderr=%r' %
                 (cmd_result.returncode, cmd_result.stdout, cmd_result.stderr))
-            lines = cmd_result.stdout.splitlines()
-            ready = cmd_result.returncode == 0 and all(
-                any(line.strip().startswith(name + " ") and
-                    "active" in line.split()
-                    for line in lines)
-                for name in ("diff_drive_controller", "joint_state_broadcaster"))
+            active = parse_active_controllers(cmd_result.stdout)
+            ready = cmd_result.returncode == 0 and {
+                "diff_drive_controller", "joint_state_broadcaster"
+            }.issubset(active)
             if ready:
                 break
             send(0.0, 0.20)
