@@ -1,5 +1,11 @@
 # zlac8015d_can_bringup
 
+> **作業ブランチ `devel/staircase-evaluation`：** 始動・失速復帰の改良版ハードウェア
+> [`zlac8015d_hardware/devel/startup-stall-rework`](https://github.com/shozawakoki/zlac8015d_hardware/tree/devel/startup-stall-rework)
+> に対応します。短距離の階段状速度指令と `stage_metrics.csv` を追加しました。
+> 詳細は [STAIRCASE_EXPERIMENTS.md](STAIRCASE_EXPERIMENTS.md) を参照してください。
+> 最初は車輪を浮かせた状態で単一条件のみ検証してください。
+
 ZLAC8015D モータドライバを搭載した対向二輪型移動ロボット向けの **ROS 2 bringup パッケージ**です。ROS 2 パッケージ名は `zlac_can_bringup` です。
 
 `robot_state_publisher`、`ros2_control_node`、`joint_state_broadcaster`、`diff_drive_controller` を起動し、別リポジトリの [zlac8015d_hardware](https://github.com/shozawakoki/zlac8015d_hardware) をハードウェアプラグインとして読み込みます。
