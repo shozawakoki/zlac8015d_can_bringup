@@ -28,6 +28,35 @@ ls -lL ~/ros2_ws/install/zlac_can_bringup/lib/zlac_can_bringup/record_experiment
 上記 `ls` でファイルが存在し、実行権限（`x`）が付いていることを確認してください。
 作業ブランチを切り替えても、現在の `main` には変更が入りません。
 
+## 一括試験で active_samples=0 となる場合（診断修正）
+
+起動後の `ros2 control list_controllers` 呼び出しが同期処理で数秒待機する間、
+スイープ実行ノードは `/joint_states` を処理できませんでした。
+その直後に `last_feedback < 0.35秒` を判定していると、
+実際にフィードバックが受信されていても起動確認を失敗する可能性があります。
+
+このブランチではCLIの戻り後に新しい `/joint_states` を処理してから
+準備完了を判定します。また、起動段階の中断理由を
+`No usable active speed-response measurements` で上書きしないよう修正しました。
+
+```bash
+source /opt/ros/humble/setup.bash
+cd ~/ros2_ws/src/zlac8015d_can_bringup
+git fetch origin
+git switch fix/sweep-readiness-diagnostics
+
+cd ~/ros2_ws
+colcon build --packages-select zlac_can_bringup --symlink-install --cmake-force-configure
+source install/setup.bash
+
+# まず安全なドライラン
+ros2 run zlac_can_bringup run_gain_sweep.py --config ~/single_trial.yaml
+```
+
+既存の `sweep_...` にある `001_.../launch.log` と `trial.json` は、
+失敗原因の切り分けに利用できます。新たな実機動作の前に確認してください。
+新ブランチは既存の制御器・ゲイン設定・モータの起動方式を変更しません。
+
 ## 一括試験スクリプトのモジュール読み込み修正
 
 `ros2 run zlac_can_bringup run_gain_sweep.py` の実行時に
