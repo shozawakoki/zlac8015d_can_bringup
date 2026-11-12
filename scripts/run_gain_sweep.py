@@ -198,6 +198,9 @@ class MotionSession:
         self.plan = plan
         self.last_cmd = (0.0, 0.0)
         self.stopping = False
+        self.observed_travel_m = 0.0
+        self.observed_rotation_rad = 0.0
+        self.last_integration_time = None
 
     def _on_joints(self, msg):
         try:
@@ -206,8 +209,12 @@ class MotionSession:
             speed_r = float(msg.velocity[ri])
             if not all(__import__("math").isfinite(x) for x in (speed_l, speed_r)):
                 return
-            current_l = float(msg.effort[li]) if len(msg.effort) > li else 0.0
-            current_r = float(msg.effort[ri]) if len(msg.effort) > ri else 0.0
+            # Effort carries measured current [A] on this hardware.
+            # Missing effort is invalid, not a synthetic safe zero.
+            if len(msg.effort) <= max(li, ri):
+                return
+            current_l = float(msg.effort[li])
+            current_r = float(msg.effort[ri])
             if not all(__import__("math").isfinite(x) for x in (current_l, current_r)):
                 return
             # Reject stale messages when the ROS header clock is valid.
@@ -215,8 +222,21 @@ class MotionSession:
             clock_s = self.node.get_clock().now().nanoseconds * 1e-9
             if stamp_s > 0 and clock_s - stamp_s > 0.5:
                 return
+            at = time.monotonic()
+            if self.last_integration_time is not None:
+                delta_t = at - self.last_integration_time
+                if 0.0 < delta_t < 0.35:
+                    r = self.plan["wheel_radius_m"]
+                    b = self.plan["wheel_separation_m"]
+                    self.observed_travel_m += (
+                        abs(0.5 * r * (speed_l + speed_r)) * delta_t
+                    )
+                    self.observed_rotation_rad += (
+                        abs((speed_r - speed_l) * r / b) * delta_t
+                    )
+            self.last_integration_time = at
             self.latest = (speed_l, speed_r, current_l, current_r)
-            self.last_feedback = time.monotonic()
+            self.last_feedback = at
             self.samples += 1
         except (ValueError, IndexError, TypeError):
             return
@@ -241,11 +261,17 @@ class MotionSession:
         maximum_speed = self.plan["safety"]["max_wheel_rad_s"]
         # Fail if wheel speeds exceed both a preset limit and a tolerance to
         # accommodate initial brake transients.
-        if max(abs(vl), abs(vr)) > maximum_speed * 1.2:
+        if max(abs(vl), abs(vr)) > min(10.0, maximum_speed * 1.2):
             raise RuntimeError(
                 "Wheel overspeed: left=%.2f right=%.2f rad/s" % (vl, vr))
+        # Secondary monitoring bound: measured wheel travel/turn, distinct
+        # from the prevalidated integrated *command* profile.
+        if self.observed_travel_m > 0.65:
+            raise RuntimeError("Observed wheel travel exceeded 0.65 m")
+        if self.observed_rotation_rad > 1.00:
+            raise RuntimeError("Observed wheel rotation exceeded 1.00 rad")
         maximum_current = self.plan["safety"]["max_current_a"]
-        if max(abs(il), abs(ir)) > maximum_current * 1.2:
+        if max(abs(il), abs(ir)) > min(8.0, maximum_current * 1.2):
             raise RuntimeError(
                 "Current exceeded monitoring threshold: L=%.2f R=%.2f A" % (il, ir))
 
