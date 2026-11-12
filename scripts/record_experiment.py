@@ -7,7 +7,6 @@ Each invocation uses a unique output directory and stores experiment.json.
 import csv
 import datetime as dt
 import json
-import math
 import os
 from pathlib import Path
 import re
@@ -24,6 +23,9 @@ from sensor_msgs.msg import JointState
 PARAMETER_DEFAULTS = {
     "mode": "ladrc_torque",
     "test_label": "speed_tracking",
+    "planned_linear_m_s": 0.2,
+    "planned_angular_rad_s": 0.0,
+    "planned_duration_s": 10.0,
     "trial": "01",
     "surface": "unspecified",
     "disturbance": "none",
