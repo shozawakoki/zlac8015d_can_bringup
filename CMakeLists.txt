@@ -55,13 +55,17 @@ install(
 # With --symlink-install, the Python entry point may execute from its
 # build-tree target. Place sweep_core.py beside it in both locations:
 # build/executable_scripts/ (symlink target) and install/libexec/ (ROS 2).
-configure_file(
-  "${CMAKE_CURRENT_SOURCE_DIR}/scripts/sweep_core.py"
-  "${_zlac_script_dir}/sweep_core.py"
-  COPYONLY
-)
+foreach(_zlac_module sweep_core.py stage_metrics.py)
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/scripts/${_zlac_module}"
+    "${_zlac_script_dir}/${_zlac_module}"
+    COPYONLY
+  )
+endforeach()
 install(
-  FILES "${_zlac_script_dir}/sweep_core.py"
+  FILES
+    "${_zlac_script_dir}/sweep_core.py"
+    "${_zlac_script_dir}/stage_metrics.py"
   DESTINATION lib/${PROJECT_NAME}
 )
 
