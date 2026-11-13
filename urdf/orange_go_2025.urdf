@@ -41,11 +41,33 @@
       -->
       <param name="control_mode">ladrc_torque</param>
 
-      <!-- LADRC: omega_dot = f + b0 * I -->
+      <!-- Identified wheel nominal gains; torque/current modes keep this plant input. -->
       <param name="ladrc_b0_left">18.0</param>
       <param name="ladrc_b0_right">18.0</param>
       <param name="ladrc_wc">5.0</param>
       <param name="ladrc_wo">20.0</param>
+
+      <!-- Legacy PID baseline, inherited by MIMO PID unless overridden. -->
+      <param name="pid_kp">0.7</param>
+      <param name="pid_ki">0.5</param>
+      <param name="pid_kd">0.03</param>
+      <param name="pid_derivative_filter_tau_s">0.05</param>
+
+      <!-- MIMO modes: mimo_ladrc_torque / mimo_pid_torque.
+           Initial gains reproduce the legacy wheel controller under
+           symmetric b0 and identical v/yaw bandwidth. Tune yaw independently. -->
+      <param name="mimo_wheel_radius">0.064</param>
+      <param name="mimo_wheel_separation">0.354</param>
+      <param name="mimo_wc_v">5.0</param>
+      <param name="mimo_wc_omega">5.0</param>
+      <param name="mimo_wo_v">20.0</param>
+      <param name="mimo_wo_omega">20.0</param>
+      <param name="mimo_pid_kp_v">0.7</param>
+      <param name="mimo_pid_kp_omega">0.7</param>
+      <param name="mimo_pid_ki_v">0.5</param>
+      <param name="mimo_pid_ki_omega">0.5</param>
+      <param name="mimo_pid_kd_v">0.03</param>
+      <param name="mimo_pid_kd_omega">0.03</param>
 
       <!-- Current-command safety constraints -->
       <param name="current_limit_a">8.0</param>
