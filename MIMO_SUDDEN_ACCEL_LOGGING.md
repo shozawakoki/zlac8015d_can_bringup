@@ -165,3 +165,36 @@ python3 scripts/record_mimo_accel_session.py \
 ~~~
 
 **Ctrl+Cで本来終了するときも、機体が停止してから押す。**
+
+
+## 状態遷移修正後：旧ライブラリをロードしてしまう問題の対策
+
+2026-11-13 の再測定では、方向反転後もBREAKAWAYが1秒以上続き、旧状態遷移の挙動が残った。このため新しい収集プログラムは以下を実施する。
+
+- ROS overlayから見えるzlac8015d_hardwareのlibzlac8015d_hardware.soを起動前に解決する。
+- バイナリ内のMIMO_TRANSITION_FIX_20261113_R2という識別文字列を検査する。なければモータを起動せずエラー。
+- パスとSHA-256を各測定のcapture_metadata.jsonへ保存する。
+- 実際のROS launch中にハードウェア初期化が識別文字列を出力したかを、測定終了時にruntime_plugin_marker_seenとして記録する。
+
+以下を上から実行。最初はモータ通電なしで確認する。
+
+~~~bash
+source /opt/ros/humble/setup.bash
+cd ~/ros2_ws/src/zlac8015d_hardware
+git pull --ff-only origin feat/mimo-ladrc-pid-straight-tracking
+g++ -std=c++17 -Wall -Wextra -pedantic -Iinclude tests/test_mimo_control.cpp -o /tmp/test_mimo_control
+/tmp/test_mimo_control
+cd ~/ros2_ws
+colcon build --packages-select zlac8015d_hardware --symlink-install
+source ~/ros2_ws/install/setup.bash
+LIB="$(ros2 pkg prefix zlac8015d_hardware)/lib/libzlac8015d_hardware.so"
+readlink -f "$LIB"
+strings "$LIB" | grep -F MIMO_TRANSITION_FIX_20261113_R2
+
+cd ~/ros2_ws/src/zlac8015d_can_bringup
+git pull --ff-only origin feat/mimo-ladrc-pid-straight-tracking
+python3 -m unittest discover -s tests -p test_record_mimo_accel_session.py -v
+python3 scripts/record_mimo_accel_session.py --check-only
+~~~
+
+チェックが通ったあと、車輪を浮かせた状態で低速の方向反転を検証し、識別マーカーとTRACKへの遷移を確認する。旧コードのままなら本スクリプトは実機launchを拒否する。
