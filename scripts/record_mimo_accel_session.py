@@ -365,6 +365,21 @@ def main(argv=None):
         stop_process("rosbag2", jobs.get("rosbag2"))
         stop_process("passive recorder", jobs.get("recorder"))
         try:
+            launch_log = (run_dir / "ros_launch.log").read_text(
+                encoding="utf-8", errors="replace")
+            runtime_seen = EXPECTED_PLUGIN_MARKER.decode() in launch_log
+            metadata["runtime_plugin_marker_seen"] = runtime_seen
+            if not runtime_seen:
+                warning = ("The active ROS hardware plugin did not print the "
+                           "expected MIMO transition build marker; confirm "
+                           "robot startup before trusting tracking data.")
+                metadata["warnings"].append(warning)
+                print("[CAPTURE] WARNING: " + warning, flush=True)
+        except OSError as exc:
+            metadata["runtime_plugin_marker_seen"] = False
+            metadata["warnings"].append(
+                f"Could not inspect active hardware build marker: {exc}")
+        try:
             metadata["hardware_csv"] = save_hardware_csv(
                 run_dir, started_wall_ns=started_wall_ns)
         except (OSError, UnicodeError) as exc:
