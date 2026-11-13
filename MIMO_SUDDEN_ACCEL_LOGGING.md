@@ -9,6 +9,8 @@
 - ROS CSV：cmd_vel.csv, joint_states.csv, odom.csv。既存の受信専用 record_experiment.py が収集。
 - ROS bag：/cmd_vel, /joint_states, /odom, /tf, /tf_static の生メッセージ。
 - ros_launch.log：launchおよびdriverのコンソールログ。
+- ros_nodes.txt、ros_topics.txt、ros_controllers.txt：実行中のROS構成のスナップショット。
+- controller_manager_parameters.yaml、diff_drive_parameters.yaml：実行時のROSパラメータ取得結果（失敗時はエラー内容を保存）。
 - passive_recorder.log, rosbag.log, ros_logs/, capture_metadata.json。
 
 内部CSVの既存列：
@@ -87,6 +89,11 @@ launch・内部ロガーを終了させてから /tmp の内部CSVを各実験�
     capture_metadata.json
     mimo_ladrc_track_200hz.csv
     ros_launch.log
+    ros_nodes.txt
+    ros_topics.txt
+    ros_controllers.txt
+    controller_manager_parameters.yaml
+    diff_drive_parameters.yaml
     passive_recorder.log
     rosbag.log
     rosbag2/
