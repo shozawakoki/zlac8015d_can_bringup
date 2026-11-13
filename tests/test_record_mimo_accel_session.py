@@ -115,7 +115,7 @@ class CaptureTests(unittest.TestCase):
             library.write_bytes(b"old version without fix")
             result = subprocess.CompletedProcess(
                 args=["ros2", "pkg", "prefix"], returncode=0,
-                stdout=str(prefix) + "\\n", stderr="")
+                stdout=str(prefix) + "\n", stderr="")
             with patch.object(mod.subprocess, "run", return_value=result):
                 with self.assertRaisesRegex(RuntimeError, "STALE HARDWARE PLUGIN"):
                     mod.verify_compiled_hardware()
@@ -131,7 +131,7 @@ class CaptureTests(unittest.TestCase):
             library.write_bytes(data)
             result = subprocess.CompletedProcess(
                 args=["ros2", "pkg", "prefix"], returncode=0,
-                stdout=str(prefix) + "\\n", stderr="")
+                stdout=str(prefix) + "\n", stderr="")
             with patch.object(mod.subprocess, "run", return_value=result):
                 info = mod.verify_compiled_hardware()
             self.assertEqual(info["plugin_path"], str(library.resolve()))
