@@ -3,13 +3,13 @@
 <package format="3">
   <name>zlac_can_bringup</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Minimal ROS 2 bringup for validated ZLAC8015D MIMO-LADRC torque control.</description>
   <maintainer email="ubuntu@todo.todo">ubuntu</maintainer>
   <license>TODO: License declaration</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <!-- Runtime dependencies: launch, ros2_control, experiment recorder. -->
+  <!-- Runtime dependencies for the single production launch. -->
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
@@ -18,14 +18,7 @@
   <exec_depend>joint_state_broadcaster</exec_depend>
   <exec_depend>diff_drive_controller</exec_depend>
   <exec_depend>zlac8015d_hardware</exec_depend>
-  <exec_depend>rclpy</exec_depend>
-  <exec_depend>geometry_msgs</exec_depend>
-  <exec_depend>sensor_msgs</exec_depend>
-  <exec_depend>nav_msgs</exec_depend>
-  <exec_depend>python3-yaml</exec_depend>
 
-  <test_depend>ament_lint_auto</test_depend>
-  <test_depend>ament_lint_common</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

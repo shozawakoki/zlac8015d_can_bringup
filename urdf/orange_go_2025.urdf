@@ -34,12 +34,9 @@
       <param name="can_interface">can0</param>
       <param name="node_id">1</param>
 
-      <!--
-        Keep "velocity" until b0 identification is finished.
-        Then set this to "ladrc_torque" and replace ladrc_b0_left/right
-        with the values reported by analyze_b0.py.
-      -->
-      <param name="control_mode">ladrc_torque</param>
+      <!-- Validated MIMO-LADRC torque controller is the default.
+           ZLAC_CONTROL_MODE may override at process startup. -->
+      <param name="control_mode">mimo_ladrc_torque</param>
 
       <!-- Identified wheel nominal gains; torque/current modes keep this plant input. -->
       <param name="ladrc_b0_left">18.0</param>
