@@ -1,92 +1,226 @@
-# MIMO-LADRC / MIMO-PID: body-velocity current control
+# MIMO-LADRC / MIMO-PID による機体速度フィードバック制御
 
-**Development branch:** feat/mimo-ladrc-pid-straight-tracking  
-**Companion hardware branch:** [zlac8015d_hardware](https://github.com/shozawakoki/zlac8015d_hardware/tree/feat/mimo-ladrc-pid-straight-tracking)
+**開発ブランチ：** `feat/mimo-ladrc-pid-straight-tracking`  
+**制御本体：** [zlac8015d_hardware（同名ブランチ）](https://github.com/shozawakoki/zlac8015d_hardware/tree/feat/mimo-ladrc-pid-straight-tracking)
 
-This experimental implementation **preserves** the legacy wheel-independent `ladrc_torque` and `pid_torque` modes. No old mode is removed. The default URDF remains `ladrc_torque` so switching branches does **not** silently engage an untested controller.
+本資料は、対向二輪型移動ロボットの電流指令型速度制御を、左右独立のLADRC/PIDから、機体の並進速度・角速度を制御量とする2入力2出力（MIMO）LADRC/PIDへ拡張した**試験用実装**について説明する。
 
-## 1. Objective / important limitation
+既存の `velocity`・`ladrc_torque`・`pid_torque` モードは削除していない。URDFの初期設定は従来の `ladrc_torque` のままであり、ブランチを切り替えただけでは未検証のMIMO制御は有効にならない。
 
-The goal is improved straight-line speed tracking by using the body velocity `[v, omega]`, rather than tuning the two wheel-speed channels separately. The **newly introduced tuning freedom** is separate linear-speed and yaw-rate gains.
+## 1. 目的と適用範囲
 
-**Do not equate a 2×2 representation with guaranteed better straightness.** Both body measurements are reconstructed from *the same two encoders*. With identical wheel plant gains and identical v/yaw gains, the transformed MIMO law is equivalent to independent wheel control. Encoder yaw cannot detect physical heading drift due to wheel slip, unequal effective wheel radii, or sensor calibration errors. Add IMU yaw-rate/heading and an outer heading/cross-track controller if those effects dominate.
+目的は、直進指令中に生じる左右車輪の速度差を、機体角速度 \(\omega\) の追従誤差として扱い、左右のモータ電流を補正できる制御系を設計・比較することである。
 
-## 2. Plant and controller matrices
+新しい制御器では、機体並進速度 \(v\) と機体角速度 \(\omega\) に対して**別々の制御ゲインとESO帯域幅**を設定できる。一方、現行のフィードバックは左右エンコーダの角速度から運動学的に算出した値であり、IMUのヨーレート・姿勢角や位置推定結果は入力していない。
 
-Wheel order is `[left, right]`; body order `[v (m/s), omega (rad/s)]`; positive yaw is left/CCW.
+**重要：行列による2入力2出力化だけで直進性能が改善するとは限らない。** 左右の公称動特性が等しく、並進・旋回のゲインも同じなら、左右独立制御を座標変換した方式と数学的に等価になる。車輪の滑り、実効車輪径差などに起因する実際の方位誤差を抑えるには、必要に応じてIMUと上位方位制御・横偏差制御を追加する。
 
-```text
-q = [omega_left, omega_right]^T
-y = [v, omega]^T = T q
+## 2. 制御対象と運動学モデル
 
-T = [ r/2,      r/2
-     -r/track,  r/track ]
+**添字・符号規約**
 
-q_dot = diag(b0_left, b0_right) * I + f_wheel
-y_dot = B * I + d
-B = T * diag(b0_left, b0_right)
-I = [I_left, I_right]^T
-```
+- 左右車輪の順序：\([L,R]\)（コードの `hw_velocities_[0]` が左、`[1]` が右）
+- 機体速度の順序：\([v,\omega]\)
+- 左右車輪が同じ正の角速度なら前進
+- \(\omega>0\) は反時計回り・左旋回（右車輪が左車輪より速い）
 
-`T` and `B` are formed and explicitly inverted (with singular-matrix detection) in `mimo_control.hpp`. Inputs to the plant remain **current commands in amperes**. There is no assumption that actual wheel velocities are independently settable actuator inputs.
+車輪半径を \(r\)、車輪間距離を \(\ell\)、左右車輪角速度を \(\omega_L,\omega_R\) とすると、
 
-### MIMO LADRC
+\[
+\boldsymbol q=
+\begin{bmatrix}\omega_L\\ \omega_R\end{bmatrix},\quad
+\boldsymbol y=
+\begin{bmatrix}v\\ \omega\end{bmatrix}
+=\boldsymbol T\boldsymbol q,\quad
+\boldsymbol T=
+\begin{bmatrix}
+r/2 & r/2\\
+-r/\ell & r/\ell
+\end{bmatrix}.
+\]
 
-```text
-error_obs = y_measured - z1
-z1_dot = z2 + B * I_previous + diag(2 * wo_v, 2 * wo_omega) * error_obs
-z2_dot = diag(wo_v^2, wo_omega^2) * error_obs
+逆変換は \(\boldsymbol q=\boldsymbol T^{-1}\boldsymbol y\) である。
 
-I_raw = B^-1 * (a_ff
-                  + diag(wc_v, wc_omega) * (y_reference - z1)
-                  - z2)
-```
+各車輪の公称モデルを
 
-The 4-state observer estimates `z1=[v_hat, omega_hat]` and `z2=[d_v_hat, d_omega_hat]`. It uses the **previous commanded currents**, not the measured CAN currents, matching the legacy ESO assumption. The motor-driver delay and unmodeled current dynamics are disturbances for this model; changing to MIMO does not remove delay-related errors.
+\[
+\dot{\boldsymbol q}=
+\operatorname{diag}(b_{0L},b_{0R})\boldsymbol u
++\boldsymbol f_q,\qquad
+\boldsymbol u=\begin{bmatrix}I_L\\I_R\end{bmatrix}
+\]
 
-### MIMO PID
+と近似すると、機体速度座標系では
 
-```text
-e = y_reference - y_measured
-I_raw = B^-1 * (mean(b0_left,b0_right) *
-                 (diag(Kp_v,Kp_omega)*e
-                  +diag(Ki_v,Ki_omega)*integral(e)
-                  -diag(Kd_v,Kd_omega)*LPF(dy_measured/dt))
-                 + a_ff)
-```
+\[
+\boxed{\dot{\boldsymbol y}=\boldsymbol B\boldsymbol u+\boldsymbol d},\qquad
+\boldsymbol B=\boldsymbol T\operatorname{diag}(b_{0L},b_{0R}),\qquad
+\boldsymbol d=\boldsymbol T\boldsymbol f_q
+\]
 
-The PID uses derivative-on-measurement to prevent setpoint derivative kick, a first-order derivative filter (`tau=0.05 s` baseline) and conservative actuator-coordinate conditional integration for anti-windup. The nominal-b0 conversion lets the original wheel PID gains be used as the initial v/yaw gains; the resulting wheel currents match the independent baseline in the symmetric linear, unsaturated case.
+となる。**制御対象への入力は左右モータの電流指令［A］** であり、車輪角速度はセンサによる出力である。左右のモータを瞬時に希望速度へ変更できると仮定しているわけではない。
 
-### Which parts remain unchanged
+現行の設定値
 
-- `diff_drive_controller` still accepts the existing `/cmd_vel` and supplies wheel angular-speed commands to `ros2_control`.
-- Wheel-specific BREAKAWAY, TRACK, TRACK_HOLD and stall/lockout logic remain in hardware. MIMO applies when *both* wheels already reached TRACK with nonzero references; otherwise the existing independent controller runs. Both controllers use the same final current clamp and slew limiter.
-- Existing independent-mode straight wheel-sync correction is disabled in MIMO modes to avoid double feedback.
-- Existing normal-stop wheel deceleration ramp is converted to a body acceleration feedforward.
-- Driver/CAN sign convention remains unchanged; left motor current is negated when constructing the RPDO frame.
-- MIMO and independent modes are **not** hot-swappable. Stop the robot and restart the node to change modes.
+- \(r=0.064\ \mathrm{m}\)
+- \(\ell=0.354\ \mathrm{m}\)
+- \(b_{0L}=b_{0R}=18.0\ \mathrm{(rad/s^2)/A}\)
 
-## 3. Initial parameters (from current repositories)
+を代入すると、
 
-| Parameter | Baseline | Purpose |
+\[
+\boldsymbol T\approx
+\begin{bmatrix}0.032&0.032\\-0.18079&0.18079\end{bmatrix},\qquad
+\boldsymbol B\approx
+\begin{bmatrix}0.576&0.576\\-3.25424&3.25424\end{bmatrix}.
+\]
+
+したがって、仮想的な機体加速度指令 \(\boldsymbol a=[a_v,a_\omega]^\mathsf T\) を電流へ変換する基本計算は
+
+\[
+\boxed{\boldsymbol u=\boldsymbol B^{-1}\boldsymbol a}
+\]
+
+となる。`mimo_control.hpp` の `DifferentialDriveModel` は \(\boldsymbol T,\boldsymbol T^{-1},\boldsymbol B,\boldsymbol B^{-1}\) を作り、行列式がほぼゼロの場合を検出する。
+
+## 3. MIMO-LADRCの計算式
+
+### 3.1 拡張状態オブザーバ（ESO）
+
+機体速度推定値と総外乱推定値を
+
+\[
+\boldsymbol z_1=
+\begin{bmatrix}\hat v\\\hat\omega\end{bmatrix},\qquad
+\boldsymbol z_2=
+\begin{bmatrix}\hat d_v\\\hat d_\omega\end{bmatrix}
+\]
+
+と定義する。ESOの観測誤差は
+
+\[
+\boldsymbol e_o=\boldsymbol y_{\mathrm{meas}}-\boldsymbol z_1
+\]
+
+である。ESO帯域幅行列を
+
+\[
+\boldsymbol\Omega_o=
+\operatorname{diag}(\omega_{o,v},\omega_{o,\omega})
+\]
+
+とすると、実装に対応する連続時間の設計式は
+
+\[
+\dot{\boldsymbol z}_1=
+\boldsymbol z_2+\boldsymbol B\boldsymbol u_{\mathrm{prev}}
++2\boldsymbol\Omega_o\boldsymbol e_o,
+\qquad
+\dot{\boldsymbol z}_2=\boldsymbol\Omega_o^2\boldsymbol e_o.
+\]
+
+\(\boldsymbol u_{\mathrm{prev}}\) は**前制御周期に送信した電流指令**であり、CANから取得する実測電流ではない。実装では制御周期 \(\Delta t\) を用いた陽的オイラー法で \(\boldsymbol z_1,\boldsymbol z_2\) を更新する。ESOは合計4状態である。
+
+### 3.2 電流指令の算出
+
+目標機体速度を \(\boldsymbol y_{\mathrm{ref}}=[v_{\mathrm{ref}},\omega_{\mathrm{ref}}]^\mathsf T\)、制御帯域幅行列を
+
+\[
+\boldsymbol K_c=\operatorname{diag}(\omega_{c,v},\omega_{c,\omega})
+\]
+
+とおくと、
+
+\[
+\boxed{
+\boldsymbol u_{\mathrm{raw}}
+=\boldsymbol B^{-1}\left[
+\boldsymbol a_{\mathrm{ff}}
++\boldsymbol K_c(\boldsymbol y_{\mathrm{ref}}-\boldsymbol z_1)
+-\boldsymbol z_2
+\right]
+}
+\]
+
+である。\(\boldsymbol a_{\mathrm{ff}}\) は通常走行時はゼロであり、通常停止の減速ランプ中に車輪角減速度から換算した値を使用する。ESOによる総外乱推定値 \(\boldsymbol z_2\) を差し引くことがLADRCの特徴である。
+
+計算した電流は、そのままCANに送るのではなく既存の電流上限・電流変化率制限・TRACK電流下限・停止処理を通す。
+
+## 4. MIMO-PIDの計算式
+
+MIMO-PIDではESOを使用せず、エンコーダ由来の実測機体速度と目標値との差
+
+\[
+\boldsymbol e=\boldsymbol y_{\mathrm{ref}}-\boldsymbol y_{\mathrm{meas}}
+\]
+
+を直接使用する。比例・積分・微分のゲイン行列は
+
+\[
+\boldsymbol K_p=\operatorname{diag}(K_{p,v},K_{p,\omega}),\quad
+\boldsymbol K_i=\operatorname{diag}(K_{i,v},K_{i,\omega}),\quad
+\boldsymbol K_d=\operatorname{diag}(K_{d,v},K_{d,\omega})
+\]
+
+である。積分状態 \(\boldsymbol \xi=\int\boldsymbol e\,dt\)、フィルタ済み実測速度微分 \(\boldsymbol \eta\) を用いると、
+
+\[
+\boxed{
+\boldsymbol u_{\mathrm{raw}}
+=\boldsymbol B^{-1}\left[
+\bar b_0\left(\boldsymbol K_p\boldsymbol e
++\boldsymbol K_i\boldsymbol\xi-\boldsymbol K_d\boldsymbol\eta\right)
++\boldsymbol a_{\mathrm{ff}}
+\right]
+}
+\]
+
+となる。ここで \(\bar b_0=(b_{0L}+b_{0R})/2\) であり、以前の車輪速度PIDのゲインを初期値として流用しやすくするために導入している。左右の \(b_0\) が等しく、両軸のゲインが等しければ、公称・非飽和条件下で左右独立PIDに対応する。
+
+**微分は目標値ではなく実測機体速度に対して行う**ため、目標速度のステップ変更による微分キックを抑えている。実装する1次ローパスフィルタは
+
+\[
+\boldsymbol\eta_k=
+(1-\alpha)\boldsymbol\eta_{k-1}
++\alpha\,\frac{\boldsymbol y_k-\boldsymbol y_{k-1}}{\Delta t},
+\qquad \alpha=\frac{\Delta t}{\tau_d+\Delta t}.
+\]
+
+積分更新は、電流候補の左右両方が上限内であり、通常停止の減速ランプ中ではない場合に限る（保守的な条件付き積分によるアンチワインドアップ）。その後の電流変化率制限まで考慮した完全なアンチワインドアップではない。
+
+## 5. 共通の起動・走行・停止処理
+
+- `diff_drive_controller` が `/cmd_vel` を受け取り、`ros2_control` に左右車輪角速度の目標値を渡す従来のインターフェースを維持する。
+- 静止摩擦への対処として、左右独立のBREAKAWAY、TRACK移行、TRACK_HOLD、ストール検出・ロックアウトを維持する。
+- **両輪がTRACK状態、かつ左右の内部目標角速度がともに非ゼロ**のときMIMO計算結果を使用する。それ以外は既存の車輪単位の制御処理を使用する。したがって全時間帯で常にMIMO制御しているわけではない。
+- 従来モードに備わる左右車輪速度の直進同期補正は、MIMOモードでは無効にしている（二重補正防止）。
+- 通常停止の減速度フィードフォワードは、既存の車輪角減速度を機体加速度へ座標変換してから計算に加える。
+- 既存のCANopen指令の符号規約を維持する。送信時は左輪電流の符号を反転する。
+- 実行中のモード切替には対応しない。停止した後にモードを指定して起動し直す。
+
+## 6. 初期パラメータ
+
+これらは既存リポジトリに由来する**比較用初期値**であり、MIMO制御として実機で最適化・検証済みの値ではない。
+
+| パラメータ | 初期値 | 役割 |
 | --- | ---: | --- |
-| `ladrc_b0_left/right` | 18.0 | Wheel current → angular acceleration gains |
-| `mimo_wheel_radius` | 0.064 m | Effective wheel radius |
-| `mimo_wheel_separation` | 0.354 m | Effective track width |
-| `mimo_wc_v / mimo_wc_omega` | 5.0 / 5.0 rad/s | LADRC control bandwidth |
-| `mimo_wo_v / mimo_wo_omega` | 20.0 / 20.0 rad/s | ESO bandwidth |
-| `mimo_pid_kp_v / mimo_pid_kp_omega` | 0.7 / 0.7 | PID P gain (wheel-gain seeded) |
-| `mimo_pid_ki_v / mimo_pid_ki_omega` | 0.5 / 0.5 | PID I gain |
-| `mimo_pid_kd_v / mimo_pid_kd_omega` | 0.03 / 0.03 | PID D gain |
-| `pid_derivative_filter_tau_s` | 0.05 s | PID derivative filter |
-| `current_limit_a` | 8.0 A | Existing URDF limit (not validated for this new controller) |
-| `current_rate_limit_a_per_s` | 20.0 A/s | Existing TRACK current slew limit |
+| `ladrc_b0_left`, `ladrc_b0_right` | 18.0, 18.0 | 車輪の公称入力ゲイン |
+| `mimo_wheel_radius` | 0.064 m | 車輪半径 |
+| `mimo_wheel_separation` | 0.354 m | 有効車輪間距離 |
+| `mimo_wc_v`, `mimo_wc_omega` | 5.0, 5.0 rad/s | MIMO-LADRC制御帯域幅 |
+| `mimo_wo_v`, `mimo_wo_omega` | 20.0, 20.0 rad/s | MIMO-ESO帯域幅 |
+| `mimo_pid_kp_v`, `mimo_pid_kp_omega` | 0.7, 0.7 | MIMO-PID比例ゲイン |
+| `mimo_pid_ki_v`, `mimo_pid_ki_omega` | 0.5, 0.5 | MIMO-PID積分ゲイン |
+| `mimo_pid_kd_v`, `mimo_pid_kd_omega` | 0.03, 0.03 | MIMO-PID微分ゲイン |
+| `pid_derivative_filter_tau_s` | 0.05 s | 微分フィルタ時定数 |
+| `current_limit_a` | 8.0 A | 既存URDFの電流上限（要実機確認） |
+| `current_rate_limit_a_per_s` | 20.0 A/s | TRACK電流の変化率上限 |
 
-**These are comparison starting values, not experimentally validated MIMO gains.** Do not automatically increase `mimo_wc_omega` or `mimo_pid_kp_omega` until the feedback polarity, saturation, and overshoot have been verified. Hardware-specific current limits should be checked against the driver and motor ratings.
+まず左右独立制御と同じ条件を基準に比較する。旋回方向のゲインだけを増加させる場合も、実機の応答・推定ノイズ・電流飽和・無駄時間に注意すること。
 
-## 4. Build and run
+## 7. ビルド・実行方法
 
-Check out the matching branch in **both** source repositories; keep all other ROS packages unchanged:
+以下はUbuntu 22.04 / ROS 2 Humbleを想定する。**制御本体とbringupの両リポジトリで同じブランチを使用する。**
 
 ```bash
 cd ~/ros2_ws/src/zlac8015d_hardware
@@ -103,21 +237,23 @@ colcon build --packages-select zlac8015d_hardware zlac_can_bringup --symlink-ins
 source install/setup.bash
 ```
 
-MIMO LADRC (a completely stopped robot; wheels raised for initial test):
+初回は車輪を浮かせ、非常停止手段を確保してから実行する。
+
+**MIMO-LADRCモード：**
 
 ```bash
 ZLAC_CONTROL_MODE=mimo_ladrc_torque ros2 launch zlac_can_bringup zlac_can_bringup.launch.py
 ```
 
-MIMO PID (separate stopped/restarted run):
+**MIMO-PIDモード：**（別の試験として完全停止後に再起動）
 
 ```bash
 ZLAC_CONTROL_MODE=mimo_pid_torque ros2 launch zlac_can_bringup zlac_can_bringup.launch.py
 ```
 
-Baseline control modes are `ladrc_torque` and `pid_torque`. To revert to the normal URDF mode, omit `ZLAC_CONTROL_MODE` or unset it. Since the environment variable is read on hardware initialization, it must be present in the launch process that starts `ros2_control_node`.
+従来方式との比較モードは `ladrc_torque` と `pid_torque`。環境変数 `ZLAC_CONTROL_MODE` を指定しない場合、URDF設定に従う。モードを変更するには、`ros2_control_node` を起動するプロセスに環境変数を渡す必要がある。
 
-For a validation without the ROS environment (using the hardware repository's standalone header test):
+**ROS不要の行列・制御式テスト：**
 
 ```bash
 cd ~/ros2_ws/src/zlac8015d_hardware
@@ -125,17 +261,29 @@ g++ -std=c++17 -Wall -Wextra -pedantic -Iinclude tests/test_mimo_control.cpp -o 
 /tmp/test_mimo_control
 ```
 
-## 5. Recorded data and experiments
+## 8. CSVログ・比較実験
 
-- MIMO LADRC: `/tmp/mimo_ladrc_track_200hz.csv`.
-- MIMO PID: `/tmp/mimo_pid_track_200hz.csv`.
-- Both append `ref_v_m_s`, `ref_omega_rad_s`, `v_m_s`, `omega_rad_s`, `hat_v_m_s`, `hat_omega_rad_s`, `hat_d_v_m_s2`, `hat_d_omega_rad_s2`, and MIMO PID integral states. The reference fields are derived from *incoming* joint references (not the internal normal-stop ramp). PID `hat_*` columns are diagnostics, not observer estimates.
+| 制御方式 | CSVファイル |
+| --- | --- |
+| MIMO-LADRC | `/tmp/mimo_ladrc_track_200hz.csv` |
+| MIMO-PID | `/tmp/mimo_pid_track_200hz.csv` |
 
-Compare the four modes with the same wheel-angle reference profile, same ramp, current limit and initial conditions. Focus on `omega RMSE`, wheel-speed difference, `v RMSE`, overshoot and current RMS; separately record IMU yaw-rate/heading and cross-track deviation. Use a same-seed/same-trajectory simulation before driving on the ground.
+両方式とも、既存の左右車輪目標角速度・実測角速度・電流・TRACK状態などの列に加え、次の項目を記録する。
 
-## 6. Safety / integration limitations
+- `ref_v_m_s`, `ref_omega_rad_s`：外部から受けた目標車輪速度から算出した機体目標速度
+- `v_m_s`, `omega_rad_s`：左右エンコーダから算出した機体速度
+- `hat_v_m_s`, `hat_omega_rad_s`：MIMO-LADRCではESO速度推定値
+- `hat_d_v_m_s2`, `hat_d_omega_rad_s2`：MIMO-LADRCではESO総外乱推定値
+- `mimo_pid_integral_v`, `mimo_pid_integral_omega`：MIMO-PIDの積分状態
 
-1. Start with raised wheels, emergency stop available, and low-speed commands. Validate that positive desired yaw causes **left current reduction and right current increase** (subject to wheel-speed feedback).
-2. The MIMO algorithms are **experimental**: a successful matrix test does not certify the 200-Hz ROS/CAN integration, stable closed-loop behavior with 23-ms transport delay, physical straightness, or safe motor limits.
-3. As in the existing implementation, a CAN timeout attempts a zero-current command; a physically interrupted CAN bus does not guarantee that zero reaches the motor driver.
-4. Actual yaw-rate here is encoder-derived. A heading or cross-track feedback loop is **not** included. Slip/real-heading correction requires a separate sensing/control change.
+**注意：** CSVの `ref_*` は受信した目標車輪速度から計算しており、内部の停止減速ランプを反映した目標値ではない。MIMO-PIDにおける `hat_*` は実測値を格納した診断列であり、ESO推定結果ではない。
+
+同一の速度指令・制限条件で、従来LADRC、従来PID、MIMO-LADRC、MIMO-PIDの4方式を比較する。評価指標には、並進速度RMSE、角速度RMSE、左右車輪速度差、オーバーシュート、電流RMSを用いる。**エンコーダ値だけでは実際の方位逸脱を評価できない**ため、IMUのヨーレート・方位角、可能であれば横偏差も別途記録する。
+
+## 9. 実機への適用条件・未検証事項
+
+1. 初回は車輪を浮かせ、回転方向と電流指令の符号を確認する。左旋回方向の角加速度指令は、一般に左輪電流を減らし右輪電流を増やす。
+2. **ROS 2 Humble環境でのビルド、200 Hzでの実行、CAN通信、実機走行は未検証。** 行列テストが成功しても実機の閉ループ安定性を保証しない。
+3. 現在の同定値には約23 msの無駄時間がある。ESOは遅延を明示的にモデル化していないため、外乱推定誤差やオーバーシュートの可能性がある。
+4. 電流上限値は必ずモータ・ドライバの仕様と照合する。ソフトウェアによるゼロ電流送信はCAN断線時の物理的な非常停止を保証しない。
+5. 現状の角速度フィードバックはエンコーダ由来であり、**IMUフィードバック、姿勢角制御、横偏差制御、スリップ補正は未実装**である。
