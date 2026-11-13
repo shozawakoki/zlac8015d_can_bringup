@@ -13,6 +13,7 @@ by the C++ plugin; this program does not send current/velocity CAN commands.
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -28,6 +29,7 @@ import uuid
 
 HARDWARE_LOG = Path("/tmp/mimo_ladrc_track_200hz.csv")
 ROS_TOPICS = ("/cmd_vel", "/joint_states", "/odom", "/tf", "/tf_static")
+EXPECTED_PLUGIN_MARKER = b"MIMO_TRANSITION_FIX_20261113_R2"
 
 
 def safe_label(value):
@@ -62,6 +64,42 @@ def controller_conflicts(ps_text):
     return found
 
 
+def verify_compiled_hardware():
+    """Reject stale/mismatched ROS overlay libraries before starting motors.
+
+    This checks the installed .so resolved by the SAME sourced ROS environment
+    used for ros2 launch. A Git source tree alone is not proof of a new build.
+    The active plugin independently prints the marker during on_init().
+    """
+    try:
+        found = subprocess.run(
+            ["ros2", "pkg", "prefix", "zlac8015d_hardware"],
+            text=True, capture_output=True, timeout=10, check=True)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(
+            "Cannot resolve zlac8015d_hardware from current ROS overlay: "
+            f"{exc}") from exc
+    prefix = Path(found.stdout.strip()).expanduser()
+    library = prefix / "lib" / "libzlac8015d_hardware.so"
+    if not library.is_file():
+        raise RuntimeError(
+            f"Installed hardware plugin was not found: {library}. "
+            "Build the hardware package and source ~/ros2_ws/install/setup.bash")
+    content = library.read_bytes()
+    if EXPECTED_PLUGIN_MARKER not in content:
+        raise RuntimeError(
+            f"STALE HARDWARE PLUGIN: {library.resolve()} lacks "
+            f"{EXPECTED_PLUGIN_MARKER.decode()}. "
+            "Run colcon build --packages-select zlac8015d_hardware "
+            "--symlink-install, then source ~/ros2_ws/install/setup.bash. "
+            "No launch or CAN commands were started.")
+    return {
+        "plugin_path": str(library.resolve()),
+        "plugin_sha256": hashlib.sha256(content).hexdigest(),
+        "plugin_marker": EXPECTED_PLUGIN_MARKER.decode(),
+    }
+
+
 def prepare(args):
     if not shutil.which("ros2"):
         raise RuntimeError("ros2 CLI not found; source /opt/ros/humble/setup.bash")
@@ -81,6 +119,7 @@ def prepare(args):
         if check.returncode != 0:
             raise RuntimeError(
                 "ros2 bag is unavailable; install rosbag2 or use --no-rosbag")
+    verify_compiled_hardware()
     return recorder
 
 
@@ -213,6 +252,9 @@ def main(argv=None):
     print(f"[CAPTURE] RESULT_DIR={run_dir}", flush=True)
     print("[CAPTURE] This script starts the MIMO-LADRC launch but DOES NOT "
           "publish /cmd_vel; use your controller in another terminal.", flush=True)
+    plugin_info = verify_compiled_hardware()
+    print(f"[CAPTURE] Plugin: {plugin_info['plugin_path']}", flush=True)
+    print(f"[CAPTURE] Plugin SHA256: {plugin_info['plugin_sha256']}", flush=True)
 
     env = dict(os.environ)
     env["ZLAC_CONTROL_MODE"] = "mimo_ladrc_torque"
@@ -238,6 +280,7 @@ def main(argv=None):
                    "/tf": "tf2_msgs/msg/TFMessage",
                    "/tf_static": "tf2_msgs/msg/TFMessage"},
         "hardware_csv_source": str(HARDWARE_LOG),
+        "installed_hardware_plugin": plugin_info,
         "warnings": [],
         "note": ("ROS CSV time_s is relative to passive recorder start; "
                  "hardware CSV time_s is relative to hardware logger start. "
