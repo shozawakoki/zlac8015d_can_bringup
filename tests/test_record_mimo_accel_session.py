@@ -106,6 +106,37 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(trial_param, 'trial:="02"')
         self.assertEqual(json.loads(trial_param.partition(":=")[2]), "02")
 
+    def test_reject_stale_installed_mimo_library(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as td:
+            prefix = Path(td)
+            library = prefix / "lib" / "libzlac8015d_hardware.so"
+            library.parent.mkdir()
+            library.write_bytes(b"old version without fix")
+            result = subprocess.CompletedProcess(
+                args=["ros2", "pkg", "prefix"], returncode=0,
+                stdout=str(prefix) + "\\n", stderr="")
+            with patch.object(mod.subprocess, "run", return_value=result):
+                with self.assertRaisesRegex(RuntimeError, "STALE HARDWARE PLUGIN"):
+                    mod.verify_compiled_hardware()
+
+    def test_accept_marked_installed_library_and_record_checksum(self):
+        import hashlib
+        import subprocess
+        with tempfile.TemporaryDirectory() as td:
+            prefix = Path(td)
+            library = prefix / "lib" / "libzlac8015d_hardware.so"
+            library.parent.mkdir()
+            data = b"ELF-fake-prefix-" + mod.EXPECTED_PLUGIN_MARKER
+            library.write_bytes(data)
+            result = subprocess.CompletedProcess(
+                args=["ros2", "pkg", "prefix"], returncode=0,
+                stdout=str(prefix) + "\\n", stderr="")
+            with patch.object(mod.subprocess, "run", return_value=result):
+                info = mod.verify_compiled_hardware()
+            self.assertEqual(info["plugin_path"], str(library.resolve()))
+            self.assertEqual(info["plugin_sha256"], hashlib.sha256(data).hexdigest())
+
     def test_check_only_does_not_start_ros(self):
         with patch.object(mod, "prepare", return_value=Path("/dev/null")):
             with patch.object(mod, "spawn") as start:
