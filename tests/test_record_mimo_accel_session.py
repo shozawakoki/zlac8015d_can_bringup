@@ -42,7 +42,8 @@ class CaptureTests(unittest.TestCase):
     def test_200hz_csv_copied_and_validated(self):
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
-            source = td / "mimo_ladrc_track_200hz.csv"
+            source = td / "source" / "mimo_ladrc_track_200hz.csv"
+            source.parent.mkdir()
             source.write_text(
                 "time_s,ref_left_rad_s,vel_left_rad_s,"
                 "cmd_current_left_A,actual_current_left_A,"
