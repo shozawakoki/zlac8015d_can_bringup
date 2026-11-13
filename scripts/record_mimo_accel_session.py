@@ -190,6 +190,17 @@ def capture_runtime_snapshot(run_dir, env):
         (run_dir / filename).write_text(output, encoding="utf-8")
 
 
+def build_recorder_command(recorder, args, run_dir):
+    """Return ROS argument list with string-typed trial even for '01'/'02'."""
+    return [
+        sys.executable, str(recorder), "--ros-args",
+        "-p", "mode:=mimo_ladrc_torque",
+        "-p", "test_label:=" + safe_label(args.label),
+        "-p", "trial:=" + json.dumps(safe_label(args.trial)),
+        "-p", "output_root:=" + str(run_dir / "ros_csv"),
+    ]
+
+
 def main(argv=None):
     args = parse_args(argv)
     recorder = prepare(args)
@@ -210,15 +221,7 @@ def main(argv=None):
 
     launch_cmd = ["ros2", "launch", "zlac_can_bringup",
                   "zlac_can_bringup.launch.py"]
-    recorder_cmd = [
-        sys.executable, str(recorder), "--ros-args",
-        "-p", "mode:=mimo_ladrc_torque",
-        "-p", "test_label:=" + safe_label(args.label),
-        # ROS 2 CLI parses 01 as a YAML integer if unquoted; the existing
-        # recorder declares trial as a STRING. Preserve the leading zero.
-        "-p", "trial:=" + json.dumps(safe_label(args.trial)),
-        "-p", "output_root:=" + str(run_dir / "ros_csv"),
-    ]
+    recorder_cmd = build_recorder_command(recorder, args, run_dir)
     bag_cmd = (["ros2", "bag", "record", "-o", str(run_dir / "rosbag2")]
                + list(ROS_TOPICS))
     started = dt.datetime.now(dt.timezone.utc)
