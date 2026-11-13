@@ -214,7 +214,9 @@ def main(argv=None):
         sys.executable, str(recorder), "--ros-args",
         "-p", "mode:=mimo_ladrc_torque",
         "-p", "test_label:=" + safe_label(args.label),
-        "-p", "trial:=" + safe_label(args.trial),
+        # ROS 2 CLI parses 01 as a YAML integer if unquoted; the existing
+        # recorder declares trial as a STRING. Preserve the leading zero.
+        "-p", "trial:=" + json.dumps(safe_label(args.trial)),
         "-p", "output_root:=" + str(run_dir / "ros_csv"),
     ]
     bag_cmd = (["ros2", "bag", "record", "-o", str(run_dir / "rosbag2")]
@@ -233,6 +235,7 @@ def main(argv=None):
                    "/tf": "tf2_msgs/msg/TFMessage",
                    "/tf_static": "tf2_msgs/msg/TFMessage"},
         "hardware_csv_source": str(HARDWARE_LOG),
+        "warnings": [],
         "note": ("ROS CSV time_s is relative to passive recorder start; "
                  "hardware CSV time_s is relative to hardware logger start. "
                  "Do NOT directly subtract without aligning clocks."),
@@ -249,6 +252,8 @@ def main(argv=None):
     jobs = {}
     launch_worker = None
     outcome = "completed"
+    recorder_failed_notified = False
+    rosbag_failed_notified = False
     try:
         jobs["recorder"], _ = spawn(
             recorder_cmd, run_dir / "passive_recorder.log", env=env)
@@ -271,15 +276,34 @@ def main(argv=None):
                 print("[CAPTURE] ROS launch exited unexpectedly or was stopped. "
                       "Finalizing logs.", flush=True)
                 break
-            if jobs["recorder"].poll() is not None:
-                outcome = "recorder_exited"
-                print("[CAPTURE] Passive ROS recorder exited; stopping session.",
-                      flush=True)
-                break
-            if "rosbag2" in jobs and jobs["rosbag2"].poll() is not None:
-                outcome = "rosbag_exited"
-                print("[CAPTURE] rosbag2 exited; stopping session.", flush=True)
-                break
+            if jobs["recorder"].poll() is not None and not recorder_failed_notified:
+                recorder_failed_notified = True
+                error_msg = (
+                    f"Passive ROS recorder exited with status "
+                    f"{jobs['recorder'].returncode}. ROS launch remains running; "
+                    f"200 Hz internal logger and rosbag2 (if available) continue.")
+                print("[CAPTURE] WARNING: " + error_msg, flush=True)
+                metadata["warnings"].append(error_msg)
+                try:
+                    recent = (run_dir / "passive_recorder.log").read_text(
+                        encoding="utf-8", errors="replace").splitlines()[-25:]
+                    if recent:
+                        print("[CAPTURE] passive_recorder.log last 25 lines:", flush=True)
+                        for line in recent:
+                            print("[RECORDER ERROR] " + line, flush=True)
+                except OSError as exc:
+                    print(f"[CAPTURE] Could not read recorder error log: {exc}",
+                          flush=True)
+                write_metadata()
+            if ("rosbag2" in jobs and jobs["rosbag2"].poll() is not None
+                    and not rosbag_failed_notified):
+                rosbag_failed_notified = True
+                error_msg = (
+                    f"rosbag2 exited with status {jobs['rosbag2'].returncode}. "
+                    "ROS launch remains running; hardware 200 Hz CSV continues.")
+                print("[CAPTURE] WARNING: " + error_msg, flush=True)
+                metadata["warnings"].append(error_msg)
+                write_metadata()
     except KeyboardInterrupt:
         print("\n[CAPTURE] Ctrl+C received: stopping ROS launch and saving data.",
               flush=True)
