@@ -9,9 +9,9 @@
 
 ## 1. 目的と適用範囲
 
-目的は、直進指令中に生じる左右車輪の速度差を、機体角速度 \(\omega\) の追従誤差として扱い、左右のモータ電流を補正できる制御系を設計・比較することである。
+目的は、直進指令中に生じる左右車輪の速度差を、機体角速度 $\omega$ の追従誤差として扱い、左右のモータ電流を補正できる制御系を設計・比較することである。
 
-新しい制御器では、機体並進速度 \(v\) と機体角速度 \(\omega\) に対して**別々の制御ゲインとESO帯域幅**を設定できる。一方、現行のフィードバックは左右エンコーダの角速度から運動学的に算出した値であり、IMUのヨーレート・姿勢角や位置推定結果は入力していない。
+新しい制御器では、機体並進速度 $v$ と機体角速度 $\omega$ に対して**別々の制御ゲインとESO帯域幅**を設定できる。一方、現行のフィードバックは左右エンコーダの角速度から運動学的に算出した値であり、IMUのヨーレート・姿勢角や位置推定結果は入力していない。
 
 **重要：行列による2入力2出力化だけで直進性能が改善するとは限らない。** 左右の公称動特性が等しく、並進・旋回のゲインも同じなら、左右独立制御を座標変換した方式と数学的に等価になる。車輪の滑り、実効車輪径差などに起因する実際の方位誤差を抑えるには、必要に応じてIMUと上位方位制御・横偏差制御を追加する。
 
@@ -19,14 +19,14 @@
 
 **添字・符号規約**
 
-- 左右車輪の順序：\([L,R]\)（コードの `hw_velocities_[0]` が左、`[1]` が右）
-- 機体速度の順序：\([v,\omega]\)
+- 左右車輪の順序：$[L,R]$（コードの `hw_velocities_[0]` が左、`[1]` が右）
+- 機体速度の順序：$[v,\omega]$
 - 左右車輪が同じ正の角速度なら前進
-- \(\omega>0\) は反時計回り・左旋回（右車輪が左車輪より速い）
+- $\omega>0$ は反時計回り・左旋回（右車輪が左車輪より速い）
 
-車輪半径を \(r\)、車輪間距離を \(\ell\)、左右車輪角速度を \(\omega_L,\omega_R\) とすると、
+車輪半径を $r$、車輪間距離を $\ell$、左右車輪角速度を $\omega_L,\omega_R$ とすると、
 
-\[
+$$
 \boldsymbol q=
 \begin{bmatrix}\omega_L\\ \omega_R\end{bmatrix},\quad
 \boldsymbol y=
@@ -37,51 +37,51 @@
 r/2 & r/2\\
 -r/\ell & r/\ell
 \end{bmatrix}.
-\]
+$$
 
-逆変換は \(\boldsymbol q=\boldsymbol T^{-1}\boldsymbol y\) である。
+逆変換は $\boldsymbol q=\boldsymbol T^{-1}\boldsymbol y$ である。
 
 各車輪の公称モデルを
 
-\[
+$$
 \dot{\boldsymbol q}=
 \operatorname{diag}(b_{0L},b_{0R})\boldsymbol u
 +\boldsymbol f_q,\qquad
 \boldsymbol u=\begin{bmatrix}I_L\\I_R\end{bmatrix}
-\]
+$$
 
 と近似すると、機体速度座標系では
 
-\[
+$$
 \boxed{\dot{\boldsymbol y}=\boldsymbol B\boldsymbol u+\boldsymbol d},\qquad
 \boldsymbol B=\boldsymbol T\operatorname{diag}(b_{0L},b_{0R}),\qquad
 \boldsymbol d=\boldsymbol T\boldsymbol f_q
-\]
+$$
 
 となる。**制御対象への入力は左右モータの電流指令［A］** であり、車輪角速度はセンサによる出力である。左右のモータを瞬時に希望速度へ変更できると仮定しているわけではない。
 
 現行の設定値
 
-- \(r=0.064\ \mathrm{m}\)
-- \(\ell=0.354\ \mathrm{m}\)
-- \(b_{0L}=b_{0R}=18.0\ \mathrm{(rad/s^2)/A}\)
+- $r=0.064\ \mathrm{m}$
+- $\ell=0.354\ \mathrm{m}$
+- $b_{0L}=b_{0R}=18.0\ \mathrm{(rad/s^2)/A}$
 
 を代入すると、
 
-\[
+$$
 \boldsymbol T\approx
 \begin{bmatrix}0.032&0.032\\-0.18079&0.18079\end{bmatrix},\qquad
 \boldsymbol B\approx
 \begin{bmatrix}0.576&0.576\\-3.25424&3.25424\end{bmatrix}.
-\]
+$$
 
-したがって、仮想的な機体加速度指令 \(\boldsymbol a=[a_v,a_\omega]^\mathsf T\) を電流へ変換する基本計算は
+したがって、仮想的な機体加速度指令 $\boldsymbol a=[a_v,a_\omega]^\mathsf T$ を電流へ変換する基本計算は
 
-\[
+$$
 \boxed{\boldsymbol u=\boldsymbol B^{-1}\boldsymbol a}
-\]
+$$
 
-となる。`mimo_control.hpp` の `DifferentialDriveModel` は \(\boldsymbol T,\boldsymbol T^{-1},\boldsymbol B,\boldsymbol B^{-1}\) を作り、行列式がほぼゼロの場合を検出する。
+となる。`mimo_control.hpp` の `DifferentialDriveModel` は $\boldsymbol T,\boldsymbol T^{-1},\boldsymbol B,\boldsymbol B^{-1}$ を作り、行列式がほぼゼロの場合を検出する。
 
 ## 3. MIMO-LADRCの計算式
 
@@ -89,49 +89,49 @@ r/2 & r/2\\
 
 機体速度推定値と総外乱推定値を
 
-\[
+$$
 \boldsymbol z_1=
 \begin{bmatrix}\hat v\\\hat\omega\end{bmatrix},\qquad
 \boldsymbol z_2=
 \begin{bmatrix}\hat d_v\\\hat d_\omega\end{bmatrix}
-\]
+$$
 
 と定義する。ESOの観測誤差は
 
-\[
+$$
 \boldsymbol e_o=\boldsymbol y_{\mathrm{meas}}-\boldsymbol z_1
-\]
+$$
 
 である。ESO帯域幅行列を
 
-\[
+$$
 \boldsymbol\Omega_o=
 \operatorname{diag}(\omega_{o,v},\omega_{o,\omega})
-\]
+$$
 
 とすると、実装に対応する連続時間の設計式は
 
-\[
+$$
 \dot{\boldsymbol z}_1=
 \boldsymbol z_2+\boldsymbol B\boldsymbol u_{\mathrm{prev}}
 +2\boldsymbol\Omega_o\boldsymbol e_o,
 \qquad
 \dot{\boldsymbol z}_2=\boldsymbol\Omega_o^2\boldsymbol e_o.
-\]
+$$
 
-\(\boldsymbol u_{\mathrm{prev}}\) は**前制御周期に送信した電流指令**であり、CANから取得する実測電流ではない。実装では制御周期 \(\Delta t\) を用いた陽的オイラー法で \(\boldsymbol z_1,\boldsymbol z_2\) を更新する。ESOは合計4状態である。
+$\boldsymbol u_{\mathrm{prev}}$ は**前制御周期に送信した電流指令**であり、CANから取得する実測電流ではない。実装では制御周期 $\Delta t$ を用いた陽的オイラー法で $\boldsymbol z_1,\boldsymbol z_2$ を更新する。ESOは合計4状態である。
 
 ### 3.2 電流指令の算出
 
-目標機体速度を \(\boldsymbol y_{\mathrm{ref}}=[v_{\mathrm{ref}},\omega_{\mathrm{ref}}]^\mathsf T\)、制御帯域幅行列を
+目標機体速度を $\boldsymbol y_{\mathrm{ref}}=[v_{\mathrm{ref}},\omega_{\mathrm{ref}}]^\mathsf T$、制御帯域幅行列を
 
-\[
+$$
 \boldsymbol K_c=\operatorname{diag}(\omega_{c,v},\omega_{c,\omega})
-\]
+$$
 
 とおくと、
 
-\[
+$$
 \boxed{
 \boldsymbol u_{\mathrm{raw}}
 =\boldsymbol B^{-1}\left[
@@ -140,9 +140,9 @@ r/2 & r/2\\
 -\boldsymbol z_2
 \right]
 }
-\]
+$$
 
-である。\(\boldsymbol a_{\mathrm{ff}}\) は通常走行時はゼロであり、通常停止の減速ランプ中に車輪角減速度から換算した値を使用する。ESOによる総外乱推定値 \(\boldsymbol z_2\) を差し引くことがLADRCの特徴である。
+である。$\boldsymbol a_{\mathrm{ff}}$ は通常走行時はゼロであり、通常停止の減速ランプ中に車輪角減速度から換算した値を使用する。ESOによる総外乱推定値 $\boldsymbol z_2$ を差し引くことがLADRCの特徴である。
 
 計算した電流は、そのままCANに送るのではなく既存の電流上限・電流変化率制限・TRACK電流下限・停止処理を通す。
 
@@ -150,21 +150,21 @@ r/2 & r/2\\
 
 MIMO-PIDではESOを使用せず、エンコーダ由来の実測機体速度と目標値との差
 
-\[
+$$
 \boldsymbol e=\boldsymbol y_{\mathrm{ref}}-\boldsymbol y_{\mathrm{meas}}
-\]
+$$
 
 を直接使用する。比例・積分・微分のゲイン行列は
 
-\[
+$$
 \boldsymbol K_p=\operatorname{diag}(K_{p,v},K_{p,\omega}),\quad
 \boldsymbol K_i=\operatorname{diag}(K_{i,v},K_{i,\omega}),\quad
 \boldsymbol K_d=\operatorname{diag}(K_{d,v},K_{d,\omega})
-\]
+$$
 
-である。積分状態 \(\boldsymbol \xi=\int\boldsymbol e\,dt\)、フィルタ済み実測速度微分 \(\boldsymbol \eta\) を用いると、
+である。積分状態 $\boldsymbol \xi=\int\boldsymbol e\,dt$、フィルタ済み実測速度微分 $\boldsymbol \eta$ を用いると、
 
-\[
+$$
 \boxed{
 \boldsymbol u_{\mathrm{raw}}
 =\boldsymbol B^{-1}\left[
@@ -173,18 +173,18 @@ MIMO-PIDではESOを使用せず、エンコーダ由来の実測機体速度と
 +\boldsymbol a_{\mathrm{ff}}
 \right]
 }
-\]
+$$
 
-となる。ここで \(\bar b_0=(b_{0L}+b_{0R})/2\) であり、以前の車輪速度PIDのゲインを初期値として流用しやすくするために導入している。左右の \(b_0\) が等しく、両軸のゲインが等しければ、公称・非飽和条件下で左右独立PIDに対応する。
+となる。ここで $\bar b_0=(b_{0L}+b_{0R})/2$ であり、以前の車輪速度PIDのゲインを初期値として流用しやすくするために導入している。左右の $b_0$ が等しく、両軸のゲインが等しければ、公称・非飽和条件下で左右独立PIDに対応する。
 
 **微分は目標値ではなく実測機体速度に対して行う**ため、目標速度のステップ変更による微分キックを抑えている。実装する1次ローパスフィルタは
 
-\[
+$$
 \boldsymbol\eta_k=
 (1-\alpha)\boldsymbol\eta_{k-1}
 +\alpha\,\frac{\boldsymbol y_k-\boldsymbol y_{k-1}}{\Delta t},
 \qquad \alpha=\frac{\Delta t}{\tau_d+\Delta t}.
-\]
+$$
 
 積分更新は、電流候補の左右両方が上限内であり、通常停止の減速ランプ中ではない場合に限る（保守的な条件付き積分によるアンチワインドアップ）。その後の電流変化率制限まで考慮した完全なアンチワインドアップではない。
 
