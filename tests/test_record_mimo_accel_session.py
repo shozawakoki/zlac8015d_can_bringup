@@ -90,6 +90,22 @@ class CaptureTests(unittest.TestCase):
             self.assertTrue(
                 (Path(td) / "controller_manager_parameters.yaml").exists())
 
+    def test_trial_parameter_preserves_01_as_yaml_string(self):
+        args = mod.parse_args(["--trial", "01"])
+        command = mod.build_recorder_command(
+            Path("/workspace/record_experiment.py"), args, Path("/tmp/run"))
+        trial_param = next(a for a in command if a.startswith("trial:="))
+        self.assertEqual(trial_param, 'trial:="01"')
+        self.assertEqual(json.loads(trial_param.partition(":=")[2]), "01")
+
+    def test_trial_parameter_preserves_02_as_yaml_string(self):
+        args = mod.parse_args(["--trial", "02"])
+        command = mod.build_recorder_command(
+            Path("/workspace/record_experiment.py"), args, Path("/tmp/run"))
+        trial_param = next(a for a in command if a.startswith("trial:="))
+        self.assertEqual(trial_param, 'trial:="02"')
+        self.assertEqual(json.loads(trial_param.partition(":=")[2]), "02")
+
     def test_check_only_does_not_start_ros(self):
         with patch.object(mod, "prepare", return_value=Path("/dev/null")):
             with patch.object(mod, "spawn") as start:
