@@ -122,3 +122,46 @@ find "$LATEST/ros_csv" -type f
 
 目標・実速度、内部電流指令、6077h電流、ESO推定値、TRACK状態を比較し、
 急加速時の異常が指令・ESO・アクチュエータのどこで発生したかを検討する。
+
+
+## 録画ノードの即時終了への対処（2026-11-13）
+
+初回の試験で PASSIVE recorder がすぐに終了し、古い収集スクリプトがlaunch全体にSIGINTを送った。結果としてspawner/robot_state_publisher/ros2_control_nodeが起動途中で中断され、RCLError: context is invalidが発生した。RCLErrorはこの順序から見る限り終了に伴う二次的なエラー。
+
+既存 record_experiment.py では trial のデフォルトが文字列 "01"。以前の起動スクリプトはROS引数 trial:=01 を送信しており、ROS 2のYAML解析で整数1と扱われて、レコーダに型不一致を発生させ得る。修正後は YAMLの文字列値 trial:="01" を渡す。
+
+また、受信専用CSVレコーダ、またはrosbag2が単独で終了しても **制御用launchは止めない**。端末に終了コードおよびpassive_recorder.log末尾を表示し、capture_metadata.jsonにwarningを記録する。ログが欠けている状態のまま実験走行しないこと。警告があったら操作コントローラで停止し、機体停止後にCtrl+Cでセッションを終了する。
+
+### 既存の失敗ログを確認（モータ操作なし）
+
+~~~bash
+SESSION=~/ros2_ws/mimo_accel_results/20261113T114442Z_sudden_acceleration_trial01_a05b635d
+
+tail -n 60 "$SESSION/passive_recorder.log"
+cat "$SESSION/capture_metadata.json"
+~~~
+
+### 更新・無通電単体テスト・事前チェック
+
+~~~bash
+source /opt/ros/humble/setup.bash
+source ~/ros2_ws/install/setup.bash
+
+cd ~/ros2_ws/src/zlac8015d_can_bringup
+git pull --ff-only origin feat/mimo-ladrc-pid-straight-tracking
+
+python3 -m unittest discover -s tests -p 'test_record_mimo_accel_session.py' -v
+python3 scripts/record_mimo_accel_session.py --check-only
+~~~
+
+新規単体テストは trial=01, 02 がともに文字列として渡されることを検査する。
+実機上ではテストとチェックが通過してから次のセッションを起動し、
+端末に警告がないこと、約数秒後に /controller_manager 等が利用可能であることを確認してから操作する。
+
+~~~bash
+python3 scripts/record_mimo_accel_session.py \
+  --label sudden_acceleration \
+  --trial 02
+~~~
+
+**Ctrl+Cで本来終了するときも、機体が停止してから押す。**
