@@ -78,6 +78,18 @@ class CaptureTests(unittest.TestCase):
                                                 started_wall_ns=0)
             self.assertEqual(result["status"], "missing")
 
+    def test_runtime_snapshot_is_read_only_and_saved(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as td:
+            result = subprocess.CompletedProcess(
+                args=["ros2"], returncode=0, stdout="ok\\n", stderr="")
+            with patch.object(mod.subprocess, "run", return_value=result) as call:
+                mod.capture_runtime_snapshot(Path(td), {"ROS_DOMAIN_ID": "0"})
+                self.assertEqual(call.call_count, 5)
+            self.assertEqual((Path(td) / "ros_nodes.txt").read_text(), "ok\\n")
+            self.assertTrue(
+                (Path(td) / "controller_manager_parameters.yaml").exists())
+
     def test_check_only_does_not_start_ros(self):
         with patch.object(mod, "prepare", return_value=Path("/dev/null")):
             with patch.object(mod, "spawn") as start:
