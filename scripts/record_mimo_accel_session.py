@@ -167,6 +167,29 @@ def save_hardware_csv(run_dir, *, started_wall_ns):
             "missing_columns": missing}
 
 
+def capture_runtime_snapshot(run_dir, env):
+    """Read-only ROS state snapshot; failures are recorded, never hide CSV logs."""
+    checks = (
+        ("ros_nodes.txt", ["ros2", "node", "list"]),
+        ("ros_topics.txt", ["ros2", "topic", "list", "-t"]),
+        ("ros_controllers.txt", ["ros2", "control", "list_controllers"]),
+        ("controller_manager_parameters.yaml",
+         ["ros2", "param", "dump", "/controller_manager"]),
+        ("diff_drive_parameters.yaml",
+         ["ros2", "param", "dump", "/diff_drive_controller"]),
+    )
+    for filename, command in checks:
+        try:
+            done = subprocess.run(command, env=env, text=True,
+                                  capture_output=True, timeout=8, check=False)
+            output = done.stdout + (
+                f"\\n[stderr; exit={done.returncode}]\\n" + done.stderr
+                if done.stderr or done.returncode else "")
+        except (OSError, subprocess.SubprocessError) as exc:
+            output = f"Snapshot unavailable: {exc}\\n"
+        (run_dir / filename).write_text(output, encoding="utf-8")
+
+
 def main(argv=None):
     args = parse_args(argv)
     recorder = prepare(args)
@@ -236,8 +259,13 @@ def main(argv=None):
         print("[CAPTURE] Use Ctrl+C HERE after the robot has stopped. "
               "This will shut down launch, finalize rosbag2 and save "
               "the 200 Hz hardware CSV.", flush=True)
+        capture_started = time.monotonic()
+        snapshot_done = False
         while True:
             time.sleep(0.2)
+            if not snapshot_done and time.monotonic() - capture_started >= 3.0:
+                capture_runtime_snapshot(run_dir, env)
+                snapshot_done = True
             if jobs["launch"].poll() is not None:
                 outcome = "launch_exited"
                 print("[CAPTURE] ROS launch exited unexpectedly or was stopped. "
