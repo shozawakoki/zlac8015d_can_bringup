@@ -45,7 +45,7 @@ $$
 
 $$
 \dot{\boldsymbol q}=
-\operatorname{diag}(b_{0L},b_{0R})\boldsymbol u
+\mathrm{diag}(b_{0L},b_{0R})\boldsymbol u
 +\boldsymbol f_q,\qquad
 \boldsymbol u=\begin{bmatrix}I_L\\I_R\end{bmatrix}
 $$
@@ -54,7 +54,7 @@ $$
 
 $$
 \boxed{\dot{\boldsymbol y}=\boldsymbol B\boldsymbol u+\boldsymbol d},\qquad
-\boldsymbol B=\boldsymbol T\operatorname{diag}(b_{0L},b_{0R}),\qquad
+\boldsymbol B=\boldsymbol T\mathrm{diag}(b_{0L},b_{0R}),\qquad
 \boldsymbol d=\boldsymbol T\boldsymbol f_q
 $$
 
@@ -106,7 +106,7 @@ $$
 
 $$
 \boldsymbol\Omega_o=
-\operatorname{diag}(\omega_{o,v},\omega_{o,\omega})
+\mathrm{diag}(\omega_{o,v},\omega_{o,\omega})
 $$
 
 とすると、実装に対応する連続時間の設計式は
@@ -126,7 +126,7 @@ $\boldsymbol u_{\mathrm{prev}}$ は**前制御周期に送信した電流指令*
 目標機体速度を $\boldsymbol y_{\mathrm{ref}}=[v_{\mathrm{ref}},\omega_{\mathrm{ref}}]^\mathsf T$、制御帯域幅行列を
 
 $$
-\boldsymbol K_c=\operatorname{diag}(\omega_{c,v},\omega_{c,\omega})
+\boldsymbol K_c=\mathrm{diag}(\omega_{c,v},\omega_{c,\omega})
 $$
 
 とおくと、
@@ -157,9 +157,9 @@ $$
 を直接使用する。比例・積分・微分のゲイン行列は
 
 $$
-\boldsymbol K_p=\operatorname{diag}(K_{p,v},K_{p,\omega}),\quad
-\boldsymbol K_i=\operatorname{diag}(K_{i,v},K_{i,\omega}),\quad
-\boldsymbol K_d=\operatorname{diag}(K_{d,v},K_{d,\omega})
+\boldsymbol K_p=\mathrm{diag}(K_{p,v},K_{p,\omega}),\quad
+\boldsymbol K_i=\mathrm{diag}(K_{i,v},K_{i,\omega}),\quad
+\boldsymbol K_d=\mathrm{diag}(K_{d,v},K_{d,\omega})
 $$
 
 である。積分状態 $\boldsymbol \xi=\int\boldsymbol e\,dt$、フィルタ済み実測速度微分 $\boldsymbol \eta$ を用いると、
