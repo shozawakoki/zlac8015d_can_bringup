@@ -43,7 +43,7 @@ class TrialCoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             core.validate_trial(0.0, 0.5, 3, 20, 3, 0.2, 0.4)
         with self.assertRaises(ValueError):
-            core.validate_trial(0.9, 1.0, 3, 20, 3, 1.0, 3.0, 1.5)
+            core.validate_trial(1.0, 3.0, 3, 20, 3, 1.0, 3.0, 1.5)
         with self.assertRaises(ValueError):
             core.validate_trial(0.1, 0.0, 3, 20, 3, 0.2, 0.4, 2.0)
 
