@@ -38,14 +38,26 @@ class TrialCoreTests(unittest.TestCase):
                 core.validate_trial(v, w, 3, 20, 3, 0.2, 0.4)
 
     def test_speed_caps_and_hardware_margin(self):
+        # The combined maximum command is allowed. Its faster wheel has
+        # peripheral speed 1 + (0.354/2)*1 = 1.177 m/s < 1.5 m/s.
+        left, right = core.validate_trial(
+            1.0, 1.0, 3, 20, 3, 1.0, 1.0, 1.5)
+        self.assertAlmostEqual(left * 0.064, 0.823)
+        self.assertAlmostEqual(right * 0.064, 1.177)
+        self.assertEqual(
+            len(core.validate_trial(-1.0, -1.0, 3, 20, 3, 1.0, 1.0)), 2)
+
         with self.assertRaises(ValueError):
-            core.validate_trial(0.25, 0, 3, 20, 3, 0.2, 0.4)
+            core.validate_trial(1.01, 0, 3, 20, 3, 1.0, 1.0)
         with self.assertRaises(ValueError):
-            core.validate_trial(0.0, 0.5, 3, 20, 3, 0.2, 0.4)
+            core.validate_trial(0.0, 1.01, 3, 20, 3, 1.0, 1.0)
         with self.assertRaises(ValueError):
-            core.validate_trial(1.0, 3.0, 3, 20, 3, 1.0, 3.0, 1.5)
+            core.validate_trial(0.0, 0.5, 3, 20, 3, 1.0, 1.1)
+        # Application overspeed abort remains configurable only below 2 m/s.
         with self.assertRaises(ValueError):
-            core.validate_trial(0.1, 0.0, 3, 20, 3, 0.2, 0.4, 2.0)
+            core.validate_trial(1.0, 1.0, 3, 20, 3, 1.0, 1.0, 1.1)
+        with self.assertRaises(ValueError):
+            core.validate_trial(0.1, 0.0, 3, 20, 3, 1.0, 1.0, 2.0)
 
     def test_publisher_conflict(self):
         own = ("mimo_cmdvel_trial_recorder", "/")
