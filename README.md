@@ -1,3 +1,19 @@
+# 検証用：/cmd_vel 定時間応答試験・ログ収集
+
+このブランチ `experiment/cmdvel-response-logger` は、安定版bringupから分岐した検証用ブランチです。
+従来の `launch/zlac_can_bringup.launch.py` は変更していません。
+試験プログラム `scripts/run_cmdvel_trial.py` は `/cmd_vel` に指定した並進速度・旋回角速度を指定秒数だけ送信し、左右エンコーダ、車輪換算機体速度、`/odom`、実電流とハードウェアの電流指令・ESO CSVを保存します。
+
+モータが別端末で起動している場合の使用例（安全確認後）：
+
+```bash
+ros2 run zlac_can_bringup run_cmdvel_trial.py \
+  --linear 0.10 --angular 0.00 --duration 3.0 --arm
+```
+
+ビルド、実験前チェック、ファイル構成は [CMDVEL_TRIAL.md](CMDVEL_TRIAL.md) を参照してください。
+
+---
 # zlac_can_bringup — MIMO-LADRC 完成版
 
 ROS 2 Humble / Ubuntu 22.04 / ZLAC8015D。ブランチ: `release/mimo-ladrc-stable`。
