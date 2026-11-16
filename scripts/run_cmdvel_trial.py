@@ -9,7 +9,6 @@ import csv
 import datetime as dt
 import json
 import math
-import os
 from pathlib import Path
 import shutil
 import signal
@@ -270,6 +269,8 @@ class CmdVelTrial(Node):
         self._phase(self.args.post_stop, 0.0, 0.0, False)
 
     def send_zero_for(self, seconds):
+        # Software stop best-effort only; use the independent physical
+        # emergency stop if the motor or ROS process becomes unresponsive.
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline and rclpy.ok():
             try:
@@ -379,6 +380,14 @@ def main(argv=None):
 
     try:
         rclpy.init()
+
+        # Keep the rclpy context alive during Ctrl+C/SIGTERM so the
+        # finally block can publish zero commands before shutdown.
+        def request_stop(signum, _frame):
+            raise KeyboardInterrupt(f"signal {signum}")
+
+        signal.signal(signal.SIGINT, request_stop)
+        signal.signal(signal.SIGTERM, request_stop)
         recorder = CmdVelTrial(args, directory)
         recorder.run_trial()
         result = "completed"
