@@ -162,9 +162,9 @@ class CmdVelTrial(Node):
         self.last_left_rad_s = left_speed
         self.last_right_rad_s = right_speed
         v, w = body_speeds(left_speed, right_speed)
-        self.max_abs_wheel_speed = max(
-            self.max_abs_wheel_speed, abs(left_speed), abs(right_speed))
         if self.started:
+            self.max_abs_wheel_speed = max(
+                self.max_abs_wheel_speed, abs(left_speed), abs(right_speed))
             self.metric_n += 1
             self.sse_v += (v - self.args.linear) ** 2
             self.sse_w += (w - self.args.angular) ** 2
@@ -318,8 +318,7 @@ class CmdVelTrial(Node):
             "source_topics": ["/cmd_vel", "/joint_states", "/odom"],
             "encoder_speed_is_wheel_feedback_not_ground_truth": True,
             "actual_current_source": "/joint_states effort",
-            "current_command_and_eso_source":
-                "/tmp/mimo_ladrc_no_breakaway_200hz.csv",
+            "current_command_and_eso_source": self.args.hardware_log,
             "counts": {
                 "cmd_vel_commands": self.published_count,
                 "joint_state_samples": self.joint_count,
@@ -411,7 +410,10 @@ def main(argv=None):
             # Never fight an existing /cmd_vel owner after preflight refusal.
             if rclpy.ok() and recorder.has_sent_motion:
                 recorder.started = False
-                recorder.send_zero_for(max(1.0, args.post_stop))
+                # Completed trials already had their requested post-stop
+                # phase. Aborted trials get a longer emergency zero hold.
+                recorder.send_zero_for(
+                    0.3 if result == "completed" else max(1.0, args.post_stop))
             recorder.close_files()
             metadata = recorder.summary(result)
             recorder.destroy_node()
