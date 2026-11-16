@@ -91,6 +91,7 @@ class CmdVelTrial(Node):
         self.origin_monotonic = time.monotonic()
         self.origin_epoch = time.time()
         self.started = False
+        self.has_sent_motion = False
         self.moving_command_started_s = None
         self.last_joint_time = None
         self.last_odom_time = None
@@ -195,6 +196,8 @@ class CmdVelTrial(Node):
         msg.linear.x = float(linear)
         msg.angular.z = float(angular)
         self.command_pub.publish(msg)
+        if abs(linear) > 1.0e-9 or abs(angular) > 1.0e-9:
+            self.has_sent_motion = True
         t, epoch = self.clock()
         self.commands_file.writerow([t, epoch, linear, angular])
         self.published_count += 1
@@ -265,7 +268,8 @@ class CmdVelTrial(Node):
             self._phase(self.args.duration, self.args.linear, self.args.angular, True)
         finally:
             self.started = False
-            self.publish(0.0, 0.0)
+            if self.has_sent_motion:
+                self.publish(0.0, 0.0)
         self._phase(self.args.post_stop, 0.0, 0.0, False)
 
     def send_zero_for(self, seconds):
@@ -403,10 +407,9 @@ def main(argv=None):
         print(f"[TRIAL] ABORT: {exc}", file=sys.stderr, flush=True)
     finally:
         if recorder is not None:
-            # Repeat the stop command even after a timeout / operator abort.
-            if rclpy.ok() and recorder.started is False:
-                recorder.send_zero_for(1.0)
-            elif rclpy.ok():
+            # Send zero only if THIS process actually commanded motion.
+            # Never fight an existing /cmd_vel owner after preflight refusal.
+            if rclpy.ok() and recorder.has_sent_motion:
                 recorder.started = False
                 recorder.send_zero_for(max(1.0, args.post_stop))
             recorder.close_files()
