@@ -40,10 +40,10 @@ def arguments(argv=None):
                         help="Publishing frequency [Hz], default 20")
     parser.add_argument("--post-stop", type=float, default=3.0,
                         help="Continue zero-command publishing and logging [s]")
-    parser.add_argument("--max-linear", type=float, default=0.2,
-                        help="Allowed magnitude of v [m/s], default 0.2")
-    parser.add_argument("--max-angular", type=float, default=0.4,
-                        help="Allowed magnitude of yaw rate [rad/s], default 0.4")
+    parser.add_argument("--max-linear", type=float, default=1.0,
+                        help="Allowed magnitude of v [m/s], default 1.0")
+    parser.add_argument("--max-angular", type=float, default=1.0,
+                        help="Allowed magnitude of yaw rate [rad/s], default 1.0")
     parser.add_argument("--abort-wheel-speed", type=float, default=1.5,
                         help="Application abort speed [m/s], below hardware 2.0 m/s")
     parser.add_argument("--feedback-timeout", type=float, default=0.5,
