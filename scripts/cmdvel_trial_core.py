@@ -37,8 +37,8 @@ def validate_trial(linear_m_s, angular_rad_s, duration_s, rate_hz,
         raise ValueError("--post-stop must be between 1 and 15 seconds")
     if not 0 < max_linear_m_s <= 1.0:
         raise ValueError("--max-linear must be within (0, 1.0] m/s")
-    if not 0 < max_angular_rad_s <= 3.0:
-        raise ValueError("--max-angular must be within (0, 3.0] rad/s")
+    if not 0 < max_angular_rad_s <= 1.0:
+        raise ValueError("--max-angular must be within (0, 1.0] rad/s")
     if abs(linear_m_s) > max_linear_m_s + 1e-12:
         raise ValueError("linear target exceeds the configured trial cap")
     if abs(angular_rad_s) > max_angular_rad_s + 1e-12:
