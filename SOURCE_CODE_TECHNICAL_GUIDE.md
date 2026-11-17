@@ -63,24 +63,24 @@ flowchart TD
 
 以下は実装の **左→右** の順序（過去の右→左の式をそのまま代入しないこと）：
 
-\[
+```math
 \boldsymbol q=\begin{bmatrix}\omega_L\\\omega_R\end{bmatrix},
 \quad
 \boldsymbol u=\begin{bmatrix}I_L\\I_R\end{bmatrix},
 \quad
 \boldsymbol y=\begin{bmatrix}v\\\omega\end{bmatrix}.
-\]
+```
 
-ロボット前進を左右車輪の正回転、反時計回り旋回を \(\omega>0\) とする。車輪半径 \(r=0.064\;\mathrm{m}\)、車輪間隔 \(\ell=0.354\;\mathrm{m}\)。
+ロボット前進を左右車輪の正回転、反時計回り旋回を $\omega>0$ とする。車輪半径 $r=0.064\;\mathrm{m}$、車輪間隔 $\ell=0.354\;\mathrm{m}$。
 
-\[
+```math
 v=\frac r2(\omega_L+\omega_R),\qquad
 \omega=\frac r\ell(\omega_R-\omega_L).
-\]
+```
 
 行列形式：
 
-\[
+```math
 \boldsymbol y=\boldsymbol T\boldsymbol q,\qquad
 \boldsymbol T=
 \begin{bmatrix}
@@ -92,16 +92,16 @@ r/2&r/2\\
 0.032&0.032\\
 -0.18079&0.18079
 \end{bmatrix}\,.
-\]
+```
 
 逆変換：
 
-\[
+```math
 \omega_{L,\mathrm{ref}}=\frac{v_{\mathrm{ref}}}{r}
 -\frac{\ell\,\omega_{\mathrm{ref}}}{2r},\qquad
 \omega_{R,\mathrm{ref}}=\frac{v_{\mathrm{ref}}}{r}
 +\frac{\ell\,\omega_{\mathrm{ref}}}{2r}.
-\]
+```
 
 - 実装：`DifferentialDriveModel::wheel_to_body()`、`body_to_wheel()`。
 - Python側も `cmdvel_trial_core.py::wheel_speeds()` と `body_speeds()` に同じ式がある。
@@ -111,40 +111,40 @@ r/2&r/2\\
 
 各車輪の一次速度モデルを、目標電流を入力として
 
-\[
+```math
 \dot{\boldsymbol q}(t)=
 \underbrace{\mathrm{diag}(b_L,b_R)}_{\boldsymbol D_b}
 \boldsymbol u(t)+\boldsymbol f_q(t)
-\]
+```
 
 と近似する。`b_L=b_R=18` [(rad/s²)/A] はURDFに指定された公称値であり、静止摩擦・車輪間干渉・電流追従誤差・無駄時間をすべて含む物理的に厳密なモデルを意味しない。
 
 機体座標へ変換すると、
 
-\[
+```math
 \dot{\boldsymbol y}=
 \underbrace{\boldsymbol T\boldsymbol D_b}_{\boldsymbol B}
 \boldsymbol u+\boldsymbol f,\qquad
 \boldsymbol f=\boldsymbol T\boldsymbol f_q.
-\]
+```
 
-\[
+```math
 \boldsymbol B=
 \begin{bmatrix}
 rb_L/2 & rb_R/2\\
 -rb_L/\ell & rb_R/\ell
 \end{bmatrix}.
-\]
+```
 
 公称ゲインが左右18の場合、
 
-\[
+```math
 \boldsymbol B\approx
 \begin{bmatrix}
 0.576 & 0.576\\
 -3.25424 & 3.25424
 \end{bmatrix}.
-\]
+```
 
 `DifferentialDriveModel` コンストラクタが `T`、`T_inv`、`B`、`B_inv` を構築する。`acceleration_to_current()` は `B_inv` を乗じ、機体座標の仮想加速度を左右の**指令電流**に変換する。
 
@@ -156,7 +156,7 @@ rb_L/2 & rb_R/2\\
 
 機体座標の観測対象 `y=[v,omega]` に対して、`z1` を速度推定、`z2` を総外乱推定とする。
 
-\[
+```math
 \begin{aligned}
 \dot{\boldsymbol z}_1 &=
 \boldsymbol z_2+\boldsymbol B\boldsymbol u_{\mathrm{prev}}
@@ -165,7 +165,7 @@ rb_L/2 & rb_R/2\\
 \boldsymbol\Omega_o^2(\boldsymbol y-\boldsymbol z_1),\\
 \boldsymbol\Omega_o&=\mathrm{diag}(\omega_{o,v},\omega_{o,\omega}).
 \end{aligned}
-\]
+```
 
 現行値：`mimo_wo_v=20`、`mimo_wo_omega=20` [rad/s]。一次制御対象なので、ESOの推定状態は各軸について **速度＋総外乱** の2階層、全体で4スカラー状態。
 
@@ -189,19 +189,19 @@ for (std::size_t i = 0; i < 2; ++i) {
 
 ### 3.2 制御則：速度追従＋外乱補償
 
-\[
+```math
 \boldsymbol a_{\mathrm{des}}=
 \boldsymbol a_{\mathrm{ff}}+
 \boldsymbol\Omega_c(\boldsymbol y_{\mathrm{ref}}-\boldsymbol z_1)
 -\boldsymbol z_2,\qquad
 \boldsymbol u_{\mathrm{raw}}=
 \boldsymbol B^{-1}\boldsymbol a_{\mathrm{des}},
-\]
+```
 
-\[
+```math
 \boldsymbol\Omega_c=
 \mathrm{diag}(\omega_{c,v},\omega_{c,\omega}).
-\]
+```
 
 現行値：`mimo_wc_v=5`、`mimo_wc_omega=5` [rad/s]。`a_ff` は停止時の減速フィードフォワードで、通常の一定速度指令時はゼロ。
 
@@ -241,35 +241,35 @@ return model.acceleration_to_current(desired_acceleration);
 
 機体座標の制御ゲインが等しい場合、
 
-\[
+```math
 \boldsymbol\Omega_c=5\boldsymbol I,\quad
 \boldsymbol\Omega_o=20\boldsymbol I.
-\]
+```
 
 車輪座標での速度誤差を `e_q=q_ref - T^{-1}z1` とすると、
 
-\[
+```math
 \boldsymbol T^{-1}\boldsymbol\Omega_c\boldsymbol T
 =\boldsymbol T^{-1}(5\boldsymbol I)\boldsymbol T
 =5\boldsymbol I.
-\]
+```
 
 ESOも同じ等ゲインなので、`T^{-1}z1`、`T^{-1}z2` と座標変換すれば車輪ごとの独立なESOに還元できる（理想的な同一サンプル・変換・初期化条件）。結果として生の電流指令は
 
-\[
+```math
 I_L=\frac{5(\omega_{L,\mathrm{ref}}-\hat\omega_L)-\hat f_L}{b_L},
 \qquad
 I_R=\frac{5(\omega_{R,\mathrm{ref}}-\hat\omega_R)-\hat f_R}{b_R},
-\]
+```
 
 という車輪別の式に変換できる。**`[v,omega]` を使っているだけでは追加の左右協調効果は発生しない**。
 
 左右で異なる外乱は
 
-\[
+```math
 f_v=\frac r2(f_{q,L}+f_{q,R}),\qquad
 f_\omega=\frac r\ell(f_{q,R}-f_{q,L})
-\]
+```
 
 として機体速度へ影響する。左右速度の追従誤差 `e_R-e_L` が残れば、実際の旋回速度偏差は `(r/ell)(e_R-e_L)` に比例し、直進軌跡が曲がる。しかし**独立制御でも各輪の外乱を十分補償できれば直進は可能**。性能低下を「MIMOではないから」とだけ断定しないこと。
 
@@ -277,13 +277,13 @@ f_\omega=\frac r\ell(f_{q,R}-f_{q,L})
 
 例えば `wc_v=5`、`wc_omega=10` と設定した場合、車輪座標の誤差フィードバック行列は
 
-\[
+```math
 \boldsymbol T^{-1}
 \begin{bmatrix}5&0\\0&10\end{bmatrix}
 \boldsymbol T
 =
 \begin{bmatrix}7.5&-2.5\\-2.5&7.5\end{bmatrix}.
-\]
+```
 
 非対角の `-2.5` により、片側の車輪速度誤差がもう片側への電流演算にも入る。これが**左右輪を結合させる**一例である。観測器側の帯域を異ならせても同様に座標間の結合が生じる。
 
@@ -297,18 +297,18 @@ f_\omega=\frac r\ell(f_{q,R}-f_{q,L})
 
 `write()` のBREAKAWAYなし分岐は、MIMO-LADRCからの生電流 `raw` に対して、車輪ごとに
 
-\[
+```math
 I_{\mathrm{amp}}[k]
 =\mathrm{clip}(I_{\mathrm{raw}}[k],-8,8),
-\]
+```
 
-\[
+```math
 I_{\mathrm{cmd}}[k]
 =\mathrm{clip}
 \left(I_{\mathrm{amp}}[k],
 I_{\mathrm{cmd}}[k-1]-20\Delta t,\,
 I_{\mathrm{cmd}}[k-1]+20\Delta t\right)
-\]
+```
 
 を適用し、最後に再び±8 Aへクリップする。既定の周期5 msなら1周期あたりの指令電流変化幅は **±0.1 A**。
 
@@ -383,10 +383,10 @@ ros2 launch zlac_can_bringup zlac_can_bringup.launch.py
 
 `read()` はTPDO0受信ごとに
 
-\[
+```math
 \max(|\omega_L|,|\omega_R|)\ \ge\
 \frac{2.0}{0.064}=31.25\ \mathrm{rad/s}
-\]
+```
 
 を判定する。左右どちらかが超過すれば `no_breakaway_overspeed_latched_=true` にし、`write()` の先頭で通常のLADRCより**優先**して **左右0 A** を送る。
 
@@ -423,7 +423,7 @@ ros2 launch zlac_can_bringup zlac_can_bringup.launch.py
 
 `mimo_control.hpp::Pid::step()` は、機体座標の `e=y_ref-y` に対し
 
-\[
+```math
 \boldsymbol a_{\mathrm{PID}}=
 \bar b\left(
 \boldsymbol K_p\boldsymbol e+
@@ -431,7 +431,7 @@ ros2 launch zlac_can_bringup zlac_can_bringup.launch.py
 \boldsymbol K_d\dot{\boldsymbol y}_{\mathrm{filtered}}
 \right)+\boldsymbol a_{\mathrm{ff}},\qquad
 \boldsymbol u_{\mathrm{PID}}=\boldsymbol B^{-1}\boldsymbol a_{\mathrm{PID}}.
-\]
+```
 
 `\bar b=(b_L+b_R)/2`。初期パラメータは各軸 `Kp=0.7`、`Ki=0.5`、`Kd=0.03`、微分フィルタ `tau=0.05 s`。P/Iはコントローラ周期、Dは **新しい速度TPDO0が入ったときだけ** 更新し、実測サンプル時刻差を用いる。微分には目標値の差分ではなく実測機体速度を使用し、目標速度ステップ時の微分キックを抑える。
 
@@ -534,13 +534,13 @@ ROS側`commands.csv`、`joint_states.csv`、`odom.csv`は**同じPython recorder
 
 `run_cmdvel_trial.py` は非ゼロ速度指令区間中に到着した`/joint_states`サンプルについて
 
-\[
+```math
 \mathrm{RMSE}_v=
 \sqrt{\frac{1}{N}\sum_{i=1}^{N}(v_i-v_{\mathrm{ref}})^2},
 \qquad
 \mathrm{RMSE}_\omega=
 \sqrt{\frac{1}{N}\sum_{i=1}^{N}(\omega_i-\omega_{\mathrm{ref}})^2}
-\]
+```
 
 を `metadata.json` に保存する。その他、最大角速度偏差・最大車輪角速度・サンプル数を保存する。
 
