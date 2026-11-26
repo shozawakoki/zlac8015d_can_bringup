@@ -256,7 +256,7 @@ class CmdVelTrial(Node):
             share = Path(get_package_share_directory("zlac_can_bringup"))
             installed_urdf = read_urdf_hardware_config(
                 share / "urdf" / "orange_go_2025.urdf")
-        except (OSError, ValueError, RuntimeError, Exception) as exc:
+        except Exception as exc:
             self.get_logger().warn(f"Could not read installed URDF: {exc}")
 
         self.controller_runtime = resolve_controller_runtime(
@@ -407,29 +407,129 @@ class CmdVelTrial(Node):
         }
 
 
-def copy_hardware_csv(source, destination, trial_start_epoch, metadata):
-    source = Path(source).expanduser()
-    if not source.is_file():
-        metadata["hardware_csv"] = {
-            "copied": False, "reason": f"not found: {source}"}
-        return
+def hardware_file_snapshot(source):
+    """Capture on-disk size/inode BEFORE the first motion command."""
+    if not source:
+        return None
     try:
-        info = source.stat()
-        # The active controller continuously writes the CSV. Refuse to use
-        # an old CSV from a previous ROS control process as new evidence.
-        if info.st_mtime < trial_start_epoch - 2.0:
-            metadata["hardware_csv"] = {
-                "copied": False, "reason": "hardware log appears stale",
-                "source": str(source)}
+        stat = Path(source).expanduser().stat()
+        return {
+            "inode": stat.st_ino,
+            "size_bytes": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+        }
+    except OSError:
+        return None
+
+
+def copy_hardware_csv(source, destination, trial_start_epoch, metadata,
+                      pretrial_snapshot=None, control_mode=None,
+                      process_unchanged=None):
+    """Save both a complete C++ log and a bounded, appended-samples view.
+
+    C++ time_s has a different zero than recorder t_s. Byte slicing starts
+    at the on-disk file size observed before motion; since C++ buffers writes,
+    the appended range is APPROXIMATE, not a synchronized time join.
+    """
+    result = {
+        "copied": False,
+        "control_mode_for_path_selection": control_mode,
+        "controller_process_unchanged": process_unchanged,
+        "source": str(source) if source else None,
+    }
+    metadata["hardware_csv"] = result
+    if not source:
+        result["reason"] = "no confirmed or configured hardware CSV path"
+        return
+    if process_unchanged is False:
+        result["reason"] = (
+            "controller process changed during the trial: "
+            "hardware CSV cannot be attributed to one controller instance")
+        return
+
+    path = Path(source).expanduser()
+    try:
+        if not path.is_file():
+            result["reason"] = f"hardware CSV not found: {path}"
             return
-        target = destination / "hardware_mimo_ladrc_200hz.csv"
-        shutil.copy2(source, target)
-        metadata["hardware_csv"] = {
-            "copied": True, "source": str(source),
-            "file": target.name, "bytes": target.stat().st_size}
-    except OSError as exc:
-        metadata["hardware_csv"] = {
-            "copied": False, "reason": str(exc)}
+        stat = path.stat()
+        previous = pretrial_snapshot
+        same_inode = bool(
+            previous is not None and
+            stat.st_ino == previous["inode"])
+        if same_inode and stat.st_size <= previous["size_bytes"]:
+            result["reason"] = "hardware log did not grow during this trial"
+            return
+        if stat.st_mtime < trial_start_epoch - 2.0:
+            result["reason"] = "hardware log appears stale"
+            return
+        if stat.st_size <= 0:
+            result["reason"] = "hardware CSV is empty"
+            return
+
+        with path.open("rb") as fh:
+            header_bytes = fh.readline()
+            header = header_bytes.decode("utf-8", errors="replace").strip()
+            required_columns = {
+                "time_s", "cmd_current_left_A", "cmd_current_right_A",
+                "actual_current_left_A", "actual_current_right_A",
+                "ref_v_m_s", "ref_omega_rad_s", "v_m_s", "omega_rad_s",
+            }
+            columns = set(header.split(","))
+            missing = sorted(required_columns - columns)
+            if missing:
+                result["reason"] = "hardware log missing columns: " + ", ".join(missing)
+                return
+            # The measured-current LADRC program uniquely records the
+            # ESO input current. Refuse accidentally copied legacy logs.
+            if (control_mode == "mimo_ladrc_no_breakaway_actual_current" and
+                    "eso_input_current_left_A" not in columns):
+                result["reason"] = (
+                    "actual-current MIMO-LADRC log lacks its ESO input columns")
+                return
+
+            if same_inode:
+                start_byte = max(previous["size_bytes"], len(header_bytes))
+            else:
+                start_byte = len(header_bytes)
+
+            if start_byte > len(header_bytes):
+                fh.seek(start_byte - 1)
+                if fh.read(1) != b"\n":
+                    # The snapshot may be in a partially written CSV row.
+                    # Drop that incomplete row rather than corrupt CSV.
+                    fh.readline()
+            else:
+                fh.seek(len(header_bytes))
+
+            appended = fh.read()
+            last_newline = appended.rfind(b"\n")
+            appended = appended[:last_newline + 1] if last_newline >= 0 else b""
+
+        if not appended:
+            result["reason"] = "no complete new hardware CSV rows after trial start"
+            return
+
+        full_name = "hardware_controller_200hz.csv"
+        trial_name = "hardware_trial_200hz.csv"
+        shutil.copy2(path, destination / full_name)
+        (destination / trial_name).write_bytes(header_bytes + appended)
+        result.update({
+            "copied": True,
+            "full_file": full_name,
+            "trial_file": trial_name,
+            "trial_slice_kind": (
+                "file_bytes_appended_since_preflight"
+                if same_inode else "new_file_after_preflight"),
+            "time_alignment": (
+                "C++ relative time_s is NOT synchronized to recorder t_s; "
+                "start boundary is only approximate due to buffered writes"),
+            "trial_rows": appended.count(b"\n"),
+            "full_file_bytes": (destination / full_name).stat().st_size,
+            "trial_file_bytes": (destination / trial_name).stat().st_size,
+        })
+    except (OSError, UnicodeError) as exc:
+        result["reason"] = str(exc)
 
 
 def main(argv=None):
