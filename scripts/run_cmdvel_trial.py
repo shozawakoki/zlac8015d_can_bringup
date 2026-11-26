@@ -16,6 +16,7 @@ import sys
 import time
 
 import rclpy
+from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
@@ -24,6 +25,8 @@ from sensor_msgs.msg import JointState
 from cmdvel_trial_core import (
     WHEEL_RADIUS_M, WHEEL_SEPARATION_M, body_speeds, other_publishers,
     validate_trial, wheel_speeds,
+    MODE_HARDWARE_LOGS, controller_processes, read_urdf_hardware_config,
+    resolve_controller_runtime, hardware_log_for_mode, same_controller_process,
 )
 
 
@@ -51,9 +54,13 @@ def arguments(argv=None):
     parser.add_argument("--output-root",
                         default="~/ros2_ws/mimo_cmdvel_trials",
                         help="Parent folder for a new trial result")
-    parser.add_argument("--hardware-log",
-                        default="/tmp/mimo_ladrc_no_breakaway_200hz.csv",
-                        help="C++ hardware 200Hz CSV (copied at the end)")
+    parser.add_argument("--hardware-log", default="auto",
+                        help="C++ hardware CSV path; default 'auto' selects "
+                             "the file matching the running control mode")
+    parser.add_argument("--control-mode", choices=sorted(MODE_HARDWARE_LOGS),
+                        default=None,
+                        help="Optional operator-declared mode. If a controller "
+                             "process declares a different mode, abort preflight.")
     parser.add_argument("--arm", action="store_true",
                         help="Required: acknowledge the robot will move")
     args = parser.parse_args(argv)
@@ -108,6 +115,13 @@ class CmdVelTrial(Node):
         self.max_abs_yaw_error = 0.0
         self.max_abs_wheel_speed = 0.0
         self.files = []
+        self.controller_runtime = None
+        self.controller_runtime_after = None
+        self.controller_process_unchanged = None
+        self.hardware_source = None
+        self.hardware_source_selection = "not_selected"
+        self.hardware_baseline = None
+        self.trial_start_epoch = None
 
         self.commands_file = self._csv(
             "commands.csv", ["t_s", "epoch_s", "linear_x_m_s", "angular_z_rad_s"])
@@ -225,10 +239,52 @@ class CmdVelTrial(Node):
                 now - self.last_joint_time < self.args.feedback_timeout and
                 self.last_odom_time is not None and
                 now - self.last_odom_time < 2.0):
+                self.capture_control_provenance()
                 return
         raise RuntimeError(
             "preflight failed: need /cmd_vel subscriber, live /joint_states "
             "(left_wheel_joint,right_wheel_joint) and /odom")
+
+    def capture_control_provenance(self):
+        """Snapshot actual controller process configuration before motion.
+
+        This is configuration evidence, not proof of the compiled hardware
+        plugin mode. The distinction is recorded in metadata.json.
+        """
+        installed_urdf = None
+        try:
+            share = Path(get_package_share_directory("zlac_can_bringup"))
+            installed_urdf = read_urdf_hardware_config(
+                share / "urdf" / "orange_go_2025.urdf")
+        except (OSError, ValueError, RuntimeError, Exception) as exc:
+            self.get_logger().warn(f"Could not read installed URDF: {exc}")
+
+        self.controller_runtime = resolve_controller_runtime(
+            controller_processes(), installed_urdf, self.args.control_mode)
+        mode = self.controller_runtime["mode"]
+        if self.args.hardware_log != "auto":
+            self.hardware_source = self.args.hardware_log
+            self.hardware_source_selection = "operator_specified_hardware_path"
+        else:
+            self.hardware_source = hardware_log_for_mode(mode)
+            self.hardware_source_selection = (
+                "automatic_from_mode" if self.hardware_source
+                else "unavailable_or_unknown_mode")
+
+        self.hardware_baseline = hardware_file_snapshot(self.hardware_source)
+        self.get_logger().info(
+            "Controller mode=%s (source=%s), hardware CSV=%s" %
+            (mode or "UNVERIFIED",
+             self.controller_runtime["mode_source"],
+             self.hardware_source or "not selected"))
+        if not self.controller_runtime["plugin_compiled_mode_verified"]:
+            self.get_logger().warn(
+                "Control mode is inferred from controller process/URDF, "
+                "not a confirmed compiled-plugin runtime report; check launch marker.")
+        if self.hardware_source is None:
+            self.get_logger().warn(
+                "No matching hardware CSV was selected. Supply --hardware-log "
+                "only if you have verified the running controller.")
 
     def _guard_motion(self):
         if self.foreign_cmd_publishers():
@@ -262,6 +318,7 @@ class CmdVelTrial(Node):
         self.get_logger().info(
             "Preflight OK; /cmd_vel subscriber, /joint_states and /odom live; "
             "no competing /cmd_vel publishers")
+        self.trial_start_epoch = time.time()
         self.moving_command_started_s = self.clock()[0]
         self.started = True
         try:
@@ -296,7 +353,12 @@ class CmdVelTrial(Node):
             "error_reason": self.error_reason,
             "time_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
             "node": self.get_name(),
-            "mode_expected": "mimo_ladrc_no_breakaway",
+            "mode_expected": (
+                self.controller_runtime.get("mode")
+                if self.controller_runtime else None),
+            "control_runtime_start": self.controller_runtime,
+            "control_runtime_end": self.controller_runtime_after,
+            "controller_process_unchanged": self.controller_process_unchanged,
             "controller_not_started_by_script": True,
             "command": {
                 "linear_m_s": self.args.linear,
@@ -318,7 +380,9 @@ class CmdVelTrial(Node):
             "source_topics": ["/cmd_vel", "/joint_states", "/odom"],
             "encoder_speed_is_wheel_feedback_not_ground_truth": True,
             "actual_current_source": "/joint_states effort",
-            "current_command_and_eso_source": self.args.hardware_log,
+            "hardware_source_selection": self.hardware_source_selection,
+            "current_command_and_eso_source": self.hardware_source,
+            "hardware_trial_start_epoch_s": self.trial_start_epoch,
             "counts": {
                 "cmd_vel_commands": self.published_count,
                 "joint_state_samples": self.joint_count,
@@ -415,6 +479,18 @@ def main(argv=None):
                 recorder.send_zero_for(
                     0.3 if result == "completed" else max(1.0, args.post_stop))
             recorder.close_files()
+            if recorder.controller_runtime is not None:
+                try:
+                    recorder.controller_runtime_after = resolve_controller_runtime(
+                        controller_processes(),
+                        recorder.controller_runtime.get("installed_urdf"))
+                    recorder.controller_process_unchanged = same_controller_process(
+                        recorder.controller_runtime,
+                        recorder.controller_runtime_after)
+                except ValueError as exc:
+                    recorder.controller_runtime_after = {
+                        "error": str(exc), "mode": None}
+                    recorder.controller_process_unchanged = False
             metadata = recorder.summary(result)
             recorder.destroy_node()
         else:
@@ -424,7 +500,22 @@ def main(argv=None):
         if rclpy.ok():
             rclpy.shutdown()
 
-        copy_hardware_csv(args.hardware_log, directory, trial_start_epoch, metadata)
+        if recorder is not None:
+            selected_hardware_source = recorder.hardware_source
+            pretrial_snapshot = recorder.hardware_baseline
+            selected_mode = (recorder.controller_runtime or {}).get("mode")
+            process_unchanged = recorder.controller_process_unchanged
+            start_epoch = recorder.trial_start_epoch or trial_start_epoch
+        else:
+            selected_hardware_source = None
+            pretrial_snapshot = None
+            selected_mode = None
+            process_unchanged = None
+            start_epoch = trial_start_epoch
+
+        copy_hardware_csv(
+            selected_hardware_source, directory, start_epoch, metadata,
+            pretrial_snapshot, selected_mode, process_unchanged)
         with (directory / "metadata.json").open("w", encoding="utf-8") as fh:
             json.dump(metadata, fh, indent=2, ensure_ascii=False, allow_nan=False)
         print(f"[TRIAL] {result}: {directory}", flush=True)
