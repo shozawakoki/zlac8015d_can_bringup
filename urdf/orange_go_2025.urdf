@@ -61,8 +61,8 @@
       <param name="mimo_wo_omega">20.0</param>
       <param name="mimo_pid_kp_v">0.7</param>
       <param name="mimo_pid_kp_omega">0.7</param>
-      <param name="mimo_pid_ki_v">0.5</param>
-      <param name="mimo_pid_ki_omega">0.5</param>
+      <param name="mimo_pid_ki_v">0.2</param>
+      <param name="mimo_pid_ki_omega">0.2</param>
       <param name="mimo_pid_kd_v">0.03</param>
       <param name="mimo_pid_kd_omega">0.03</param>
 
