@@ -1,3 +1,24 @@
+# /cmd_vel 応答試験：制御モード・内部状態の自動保存
+
+\`run_cmdvel_trial.py\` は**従来の起動コマンドのまま**、現在のコントローラ設定と対応するハードウェアログを保存します（制御器の起動・切り替えは行いません）。
+
+\`\`\`bash
+ros2 run zlac_can_bringup run_cmdvel_trial.py \
+  --linear 1.0 --angular 0.0 --duration 5.0 --arm
+\`\`\`
+
+- 稼働中の \`ros2_control_node\` の \`ZLAC_CONTROL_MODE\` 環境変数（別プロセス）から制御モードを判定。未設定ならインストール済みURDFの \`control_mode\` 既定値を参照し、**推定・未確認の状態も明記**します。これはプラグイン実行モードの直接証明ではありません。起動識別子も目視確認してください。
+- PID・ADRCのモードに応じた \`/tmp/..._200hz.csv\` を自動選択し、積分状態・微分フィルタ・ESO状態・指令/実電流・過速度ラッチなどを、実際に記録された列のまま保存します（モードにより列の意味は異なります）。
+- \`metadata.json\` はモードの判定根拠、制御プロセスPID/起動識別、インストール済みURDFのパラメータとハッシュ、前後でのプロセス再起動判定、収集できたCSVの状態を保存します。旧来の固定 \`mode_expected=mimo_ladrc_no_breakaway\` は廃止しました。
+- \`hardware_controller_200hz.csv\` はコントローラの累積ログのコピー、\`hardware_trial_200hz.csv\` は試験前のファイルサイズより後に追記されたCSV行の抽出です。ハードウェアCSVの \`time_s\` は独立原点、出力バッファの影響もあり**ROSの \`t_s\` との厳密な時刻同期ではありません**。
+- PID版 \`mimo_pid_no_breakaway\` と実電流ESO版 \`mimo_ladrc_no_breakaway_actual_current\` の両方に対応します。CSV不存在・未更新・制御プロセス再起動などでは、誤データをコピーせず理由を記録します。
+
+保存先：\`~/ros2_ws/mimo_cmdvel_trials/<日時・速度値>/\`（既存の \`commands.csv\`、\`joint_states.csv\`、\`odom.csv\` も継続）。
+
+運用詳細、ゲインの記録、トラブルシューティングは [CMDVEL_TRIAL.md](CMDVEL_TRIAL.md) 参照。
+
+---
+
 # 検証用：/cmd_vel 定時間応答試験・ログ収集
 
 このブランチ `experiment/cmdvel-response-logger` は、安定版bringupから分岐した検証用ブランチです。
