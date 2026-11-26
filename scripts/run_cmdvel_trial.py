@@ -262,14 +262,22 @@ class CmdVelTrial(Node):
         self.controller_runtime = resolve_controller_runtime(
             controller_processes(), installed_urdf, self.args.control_mode)
         mode = self.controller_runtime["mode"]
+        mode_source = self.controller_runtime["mode_source"]
         if self.args.hardware_log != "auto":
             self.hardware_source = self.args.hardware_log
             self.hardware_source_selection = "operator_specified_hardware_path"
-        else:
+        elif mode_source in (
+                "running_ros2_control_node_environment",
+                "installed_urdf_default_no_process_env_override"):
             self.hardware_source = hardware_log_for_mode(mode)
             self.hardware_source_selection = (
-                "automatic_from_mode" if self.hardware_source
-                else "unavailable_or_unknown_mode")
+                "automatic_from_controller_configuration"
+                if self.hardware_source else "unavailable_or_unknown_mode")
+        else:
+            # Do not guess the hardware logger based solely on a local URDF
+            # if the actual running controller process could not be identified.
+            self.hardware_source = None
+            self.hardware_source_selection = "unverified_controller_process"
 
         self.hardware_baseline = hardware_file_snapshot(self.hardware_source)
         self.get_logger().info(
